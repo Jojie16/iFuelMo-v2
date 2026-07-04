@@ -1022,8 +1022,7 @@ let allStationsData = [];
 let isRouteActive = false;
 let activeRouteDestination = null;
 let isFetchingStations = false;
-let lastFetchTime = 0;
-let stationFetchTimeout = null;
+let hasInitialLocation = false;
 
 // ============================================================
 // THEME
@@ -1238,10 +1237,9 @@ function estimateETA(distanceKm) {
 // GENERATE RANDOM PRICES
 // ============================================================
 function generateRandomPrices() {
-    // Generate realistic Philippine fuel prices
-    const baseUnleaded = 55 + Math.random() * 8; // 55-63
-    const basePremium = baseUnleaded + 3 + Math.random() * 4; // +3-7
-    const baseDiesel = baseUnleaded - 2 + Math.random() * 4; // -2 to +2
+    const baseUnleaded = 55 + Math.random() * 8;
+    const basePremium = baseUnleaded + 3 + Math.random() * 4;
+    const baseDiesel = baseUnleaded - 2 + Math.random() * 4;
     
     return {
         unleaded: Math.round(baseUnleaded * 100) / 100,
@@ -1259,25 +1257,34 @@ function initMap() {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(mapInstance);
     markersLayer = L.layerGroup().addTo(mapInstance);
     
-    if (navigator.geolocation) {
-        watchId = navigator.geolocation.watchPosition(
+    // Get initial location once
+    if (navigator.geolocation && !hasInitialLocation) {
+        navigator.geolocation.getCurrentPosition(
             pos => { 
                 userLat = pos.coords.latitude; 
                 userLng = pos.coords.longitude; 
                 updateUserMarker(userLat, userLng); 
-                mapInstance.setView([userLat, userLng], 15); 
-                if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); 
+                mapInstance.setView([userLat, userLng], 15);
+                hasInitialLocation = true;
+                findNearbyStations(userLat, userLng, currentRange);
             },
-            err => { console.warn('Location error:', err.message); if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); },
-            { enableHighAccuracy: true, distanceFilter: 100 } // Increased distance filter to reduce updates
+            err => { 
+                console.warn('Location error:', err.message);
+                findNearbyStations(userLat, userLng, currentRange);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
         );
-    } else {
-        if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange);
+    } else if (!hasInitialLocation) {
+        findNearbyStations(userLat, userLng, currentRange);
     }
     
     document.getElementById('locateBtn').addEventListener('click', function() {
+        if (isRouteActive) {
+            showToast('Please cancel current route first', 'warning');
+            return;
+        }
+        
         if (navigator.geolocation) {
-            // Show loading state
             this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             
             navigator.geolocation.getCurrentPosition(
@@ -1285,8 +1292,8 @@ function initMap() {
                     userLat = pos.coords.latitude; 
                     userLng = pos.coords.longitude; 
                     updateUserMarker(userLat, userLng);
+                    hasInitialLocation = true;
                     
-                    // Smooth zoom to current location
                     if (mapInstance) {
                         mapInstance.flyTo([userLat, userLng], 15, {
                             duration: 1.5,
@@ -1294,16 +1301,15 @@ function initMap() {
                         });
                     }
                     
-                    if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); 
+                    findNearbyStations(userLat, userLng, currentRange);
                     showToast('📍 Location updated!', 'success');
                     
-                    // Reset button
-                    document.getElementById('locateBtn').innerHTML = '<i class="fas fa-crosshairs"></i>';
+                    this.innerHTML = '<i class="fas fa-crosshairs"></i>';
                 },
                 (err) => {
                     console.error('Geolocation error:', err);
                     showToast('Unable to get location. Please enable GPS.', 'error');
-                    document.getElementById('locateBtn').innerHTML = '<i class="fas fa-crosshairs"></i>';
+                    this.innerHTML = '<i class="fas fa-crosshairs"></i>';
                 },
                 { 
                     enableHighAccuracy: true, 
@@ -1340,42 +1346,38 @@ function updateUserMarker(lat, lng) {
 function findNearbyStations(lat, lng, rangeKm) {
     if (isRouteActive) return;
     
-    // Prevent multiple simultaneous requests
     if (isFetchingStations) {
         console.log('Already fetching stations, skipping...');
         return;
     }
     
-    // Throttle requests - only allow one request every 5 seconds
-    const now = Date.now();
-    if (now - lastFetchTime < 5000) {
-        console.log('Throttling station requests...');
-        return;
-    }
-    
     isFetchingStations = true;
-    lastFetchTime = now;
-    
     currentRange = rangeKm || 5;
     const radius = currentRange * 1000;
     document.getElementById('stationCount').textContent = '...';
     document.getElementById('stationList').innerHTML = '<div class="text-center text-muted py-3">Searching...</div>';
     
-    // First, try to use locally stored stations
+    // First, use locally stored stations
     const dbStations = DB.getStations();
     if (dbStations.length > 0) {
         // Calculate distances for local stations
-        dbStations.forEach(station => {
-            station.distance = calculateDistance(lat, lng, station.lat, station.lng);
-            station.eta = estimateETA(station.distance);
+        const stationsWithDist = dbStations.map(station => {
+            const dist = calculateDistance(lat, lng, station.lat, station.lng);
+            return {
+                ...station,
+                distance: dist,
+                eta: estimateETA(dist)
+            };
         });
-        dbStations.sort((a, b) => a.distance - b.distance);
-        allStationsData = dbStations;
         
-        // Display local stations immediately
-        displayStations(dbStations, lat, lng);
+        // Filter by range
+        const filtered = stationsWithDist.filter(s => s.distance <= rangeKm);
+        filtered.sort((a, b) => a.distance - b.distance);
+        allStationsData = filtered;
         
-        // Still try to fetch from Overpass API for updates (but don't block UI)
+        displayStations(filtered, lat, lng);
+        
+        // Fetch from API in background without showing toast
         fetchOverpassStations(lat, lng, radius, dbStations);
     } else {
         // No local stations, try Overpass API
@@ -1386,9 +1388,8 @@ function findNearbyStations(lat, lng, rangeKm) {
 function fetchOverpassStations(lat, lng, radius, existingStations) {
     const query = `[out:json];(node["amenity"="fuel"](around:${radius},${lat},${lng});way["amenity"="fuel"](around:${radius},${lat},${lng}););out center;`;
     
-    // Use fetch with timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
     
     fetch('https://cors-anywhere.herokuapp.com/https://overpass-api.de/api/interpreter', {
         method: 'POST',
@@ -1410,14 +1411,12 @@ function fetchOverpassStations(lat, lng, radius, existingStations) {
             const osmLng = osm.lon || (osm.center && osm.center.lon);
             if (!osmLat || !osmLng) return;
             
-            // Check if station already exists in db
             const existing = allStations.find(s => 
                 Math.abs(s.lat - osmLat) < 0.001 && 
                 Math.abs(s.lng - osmLng) < 0.001
             );
             
             if (!existing) {
-                // Generate random prices for new stations
                 const prices = generateRandomPrices();
                 allStations.push({ 
                     id: Date.now() + Math.random() * 1000, 
@@ -1433,22 +1432,25 @@ function fetchOverpassStations(lat, lng, radius, existingStations) {
             }
         });
         
-        // Save new stations to DB
         if (allStations.length > existingStations.length) {
             DB.set('stations', allStations);
         }
         
-        // Calculate distances for all stations
-        allStations.forEach(station => {
-            station.distance = calculateDistance(lat, lng, station.lat, station.lng);
-            station.eta = estimateETA(station.distance);
+        // Recalculate and filter
+        const stationsWithDist = allStations.map(station => {
+            const dist = calculateDistance(lat, lng, station.lat, station.lng);
+            return {
+                ...station,
+                distance: dist,
+                eta: estimateETA(dist)
+            };
         });
         
-        // Sort by distance
-        allStations.sort((a, b) => a.distance - b.distance);
-        allStationsData = allStations;
+        const filtered = stationsWithDist.filter(s => s.distance <= currentRange);
+        filtered.sort((a, b) => a.distance - b.distance);
+        allStationsData = filtered;
         
-        displayStations(allStations, lat, lng);
+        displayStations(filtered, lat, lng);
         isFetchingStations = false;
     })
     .catch((err) => {
@@ -1456,25 +1458,19 @@ function fetchOverpassStations(lat, lng, radius, existingStations) {
         console.error('Error fetching stations:', err);
         isFetchingStations = false;
         
-        // If we have existing stations, we already displayed them
-        if (existingStations.length > 0) {
-            showToast('Using cached stations data', 'info');
-        } else {
-            // Show fallback stations
+        if (existingStations.length === 0) {
             showFallbackStations(lat, lng);
         }
     });
 }
 
 function displayStations(stations, lat, lng) {
-    // Clear previous markers
     markersLayer.clearLayers();
     if (userMarker) userMarker.addTo(mapInstance);
     
     document.getElementById('stationCount').textContent = stations.length + ' found';
     document.getElementById('stationListCount').textContent = stations.length;
     
-    // Add markers for ALL stations
     stations.forEach(station => {
         const stationLat = station.lat; 
         const stationLng = station.lng;
@@ -1504,7 +1500,6 @@ function displayStations(stations, lat, lng) {
         `);
     });
     
-    // Build station list
     let html = '';
     stations.forEach((station) => {
         const stationLat = station.lat; 
@@ -1566,7 +1561,6 @@ function showFallbackStations(lat, lng) {
     
     const stations = DB.getStations();
     if (stations.length === 0) {
-        // Create some dummy stations if none exist
         const dummyStations = [
             { id: 1, name: 'Petron Gas Station', brand: 'Petron', lat: lat + 0.01, lng: lng + 0.01, unleaded: 57.50, premium: 62.50, diesel: 55.00, address: 'Main Road' },
             { id: 2, name: 'Shell Station', brand: 'Shell', lat: lat - 0.008, lng: lng + 0.015, unleaded: 58.00, premium: 63.00, diesel: 55.50, address: 'Coastal Highway' },
@@ -1576,18 +1570,22 @@ function showFallbackStations(lat, lng) {
         ];
         DB.set('stations', dummyStations);
         stations.push(...dummyStations);
-        showToast('Using demo station data', 'info');
     }
     
-    // Calculate distances
-    stations.forEach(station => {
-        station.distance = calculateDistance(lat, lng, station.lat, station.lng);
-        station.eta = estimateETA(station.distance);
+    const stationsWithDist = stations.map(station => {
+        const dist = calculateDistance(lat, lng, station.lat, station.lng);
+        return {
+            ...station,
+            distance: dist,
+            eta: estimateETA(dist)
+        };
     });
-    stations.sort((a, b) => a.distance - b.distance);
-    allStationsData = stations;
     
-    displayStations(stations, lat, lng);
+    const filtered = stationsWithDist.filter(s => s.distance <= currentRange);
+    filtered.sort((a, b) => a.distance - b.distance);
+    allStationsData = filtered;
+    
+    displayStations(filtered, lat, lng);
 }
 
 // ============================================================
@@ -1649,7 +1647,6 @@ function drawRoute(startLat, startLng, endLat, endLng, destName, destStation) {
     isRouteActive = true;
     activeRouteDestination = destStation;
     
-    // Hide all stations except the selected one in the list
     document.querySelectorAll('.station-item').forEach(el => {
         const stationId = parseInt(el.dataset.stationId);
         if (stationId === destStation?.id) {
@@ -1661,7 +1658,6 @@ function drawRoute(startLat, startLng, endLat, endLng, destName, destStation) {
         }
     });
     
-    // Update drive buttons
     document.querySelectorAll('.drive-btn').forEach(btn => {
         btn.classList.remove('active-route');
         btn.innerHTML = '<i class="fas fa-car"></i> Drive';
@@ -1672,11 +1668,9 @@ function drawRoute(startLat, startLng, endLat, endLng, destName, destStation) {
         activeBtn.innerHTML = '<i class="fas fa-route"></i> Driving';
     }
     
-    // Clear and re-add markers - only show the selected station marker
     markersLayer.clearLayers();
     if (userMarker) userMarker.addTo(mapInstance);
     
-    // Add marker for destination
     const hasPrices = destStation.unleaded !== null && destStation.unleaded !== undefined;
     const icon = L.divIcon({ 
         html: `<div style="background:white;border-radius:50%;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,0.2);border:2px solid #4ade80;">
@@ -1737,13 +1731,11 @@ function cancelRoute() {
     isRouteActive = false;
     activeRouteDestination = null;
     
-    // Show all stations again
     document.querySelectorAll('.station-item').forEach(el => {
         el.classList.remove('hidden-station');
         el.classList.remove('active-route-item');
     });
     
-    // Reset all drive buttons
     document.querySelectorAll('.drive-btn').forEach(btn => {
         btn.classList.remove('active-route');
         btn.innerHTML = '<i class="fas fa-car"></i> Drive';
@@ -1761,7 +1753,6 @@ function cancelRoute() {
     document.getElementById('routeDestination').textContent = '-';
     showToast('Route cancelled', 'info');
     
-    // Refresh stations - show all again
     if (mapInstance) {
         findNearbyStations(userLat, userLng, currentRange);
     }
@@ -1779,7 +1770,13 @@ document.querySelectorAll('.range-btn').forEach(btn => {
         document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         currentRange = parseInt(this.dataset.range);
-        if (mapInstance) findNearbyStations(userLat, userLng, currentRange);
+        if (mapInstance && hasInitialLocation) {
+            findNearbyStations(userLat, userLng, currentRange);
+        } else if (mapInstance) {
+            // Use current map center if no location
+            const center = mapInstance.getCenter();
+            findNearbyStations(center.lat, center.lng, currentRange);
+        }
     });
 });
 
