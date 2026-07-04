@@ -1,0 +1,1938 @@
+<!-- ============================================================
+     File: main.html - All stations with prices and fixed locate button
+     ============================================================ -->
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>iFuelMo - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <style>
+        :root {
+            --primary: #1a5cff;
+            --primary-dark: #0f4ad0;
+            --primary-light: #e8f0fe;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --danger: #ef4444;
+            --bg: #f0f4f8;
+            --surface: #ffffff;
+            --text-primary: #0b1a33;
+            --text-secondary: #4a5b72;
+            --text-muted: #6b7a8f;
+            --border: #eef2f6;
+            --shadow: rgba(0,0,0,0.06);
+            --nav-bg: rgba(255,255,255,0.98);
+            --card-bg: #ffffff;
+            --input-bg: #fafcff;
+            --map-bg: #d9dfe8;
+        }
+        [data-theme="dark"] {
+            --primary: #4a9eff;
+            --primary-dark: #1a73e8;
+            --primary-light: #1a2a4a;
+            --bg: #0d1117;
+            --surface: #161b22;
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0b8;
+            --text-muted: #8b9bb0;
+            --border: #30363d;
+            --shadow: rgba(0,0,0,0.4);
+            --nav-bg: rgba(22,27,34,0.98);
+            --card-bg: #1c2333;
+            --input-bg: #2d3448;
+            --map-bg: #1a1f2e;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: var(--bg);
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            padding-bottom: 80px;
+            color: var(--text-primary);
+            transition: background 0.3s, color 0.3s;
+        }
+        
+        /* Navbar */
+        .navbar-custom {
+            background: var(--surface);
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            box-shadow: 0 2px 8px var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .navbar-custom .brand {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+        .navbar-custom .brand span { color: var(--primary); }
+        .navbar-custom .esp-status {
+            font-size: 11px;
+            padding: 4px 12px;
+            border-radius: 40px;
+            font-weight: 600;
+        }
+        .navbar-custom .esp-status.connected { background: #e6f4ea; color: #166534; }
+        .navbar-custom .esp-status.disconnected { background: #fee9e7; color: #b91c1c; }
+        [data-theme="dark"] .navbar-custom .esp-status.connected { background: #1a3a2a; color: #4ade80; }
+        [data-theme="dark"] .navbar-custom .esp-status.disconnected { background: #3a1a1a; color: #ef5350; }
+        .theme-toggle {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-primary);
+            transition: 0.2s;
+        }
+        .theme-toggle:hover { transform: scale(1.05); }
+        
+        /* Bottom Nav - ALWAYS VISIBLE */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--nav-bg);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 6px 0 12px;
+            z-index: 9999;
+            max-width: 768px;
+            margin: 0 auto;
+            box-shadow: 0 -4px 20px var(--shadow);
+            backdrop-filter: blur(8px);
+            transition: background 0.3s, border-color 0.3s;
+            pointer-events: auto;
+            height: 64px;
+        }
+        .bottom-nav .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 9px;
+            color: var(--text-muted);
+            background: transparent;
+            border: none;
+            padding: 4px 12px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-weight: 500;
+            text-decoration: none;
+            min-width: 50px;
+            position: relative;
+        }
+        .bottom-nav .nav-item i { font-size: 18px; margin-bottom: 2px; transition: 0.2s; }
+        .bottom-nav .nav-item.active { color: var(--primary); }
+        .bottom-nav .nav-item.active i { color: var(--primary); }
+        .bottom-nav .nav-item:active { transform: scale(0.92); }
+        .bottom-nav .nav-item .badge-dot {
+            position: absolute;
+            top: 2px;
+            right: 4px;
+            width: 8px;
+            height: 8px;
+            background: var(--danger);
+            border-radius: 50%;
+            border: 2px solid var(--nav-bg);
+        }
+        
+        /* Pages */
+        .page { display: none; padding: 16px 16px 80px 16px; animation: fadeIn 0.3s ease; }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Cards */
+        .card-custom {
+            background: var(--surface);
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px var(--shadow);
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .card-custom .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        /* Fuel Gauge */
+        .fuel-gauge {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: var(--bg);
+            position: relative;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid var(--border);
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .fuel-gauge .level {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            border-radius: 0 0 70px 70px;
+            background: var(--success);
+            height: 65%;
+            transition: height 0.8s ease;
+        }
+        .fuel-gauge .level.warning { background: var(--warning); }
+        .fuel-gauge .level.critical { background: var(--danger); }
+        .fuel-gauge .center-text { position: relative; z-index: 1; text-align: center; }
+        .fuel-gauge .center-text .pct { font-size: 30px; font-weight: 700; color: var(--text-primary); }
+        .fuel-gauge .center-text .label { font-size: 11px; color: var(--text-muted); }
+        
+        /* ESP32 */
+        .esp-sim {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .esp-sim .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+        .esp-sim .status-dot.online { background: var(--success); }
+        .esp-sim .status-dot.offline { background: var(--danger); }
+        
+        /* Map */
+        #mapContainer {
+            width: 100%;
+            height: 350px;
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            background: var(--map-bg);
+            transition: height 0.4s ease, background 0.3s;
+        }
+        #mapContainer.fullscreen {
+            height: calc(93vh - 220px);
+            min-height: 350px;
+        }
+        #map { width: 100%; height: 100%; }
+        [data-theme="dark"] .leaflet-tile-pane { filter: brightness(0.7) saturate(0.8) contrast(1.2); }
+        [data-theme="dark"] .leaflet-popup-content-wrapper { background: var(--surface) !important; color: var(--text-primary) !important; }
+        [data-theme="dark"] .leaflet-popup-tip { background: var(--surface) !important; }
+        [data-theme="dark"] .leaflet-control-zoom { background: var(--surface) !important; border-color: var(--border) !important; }
+        [data-theme="dark"] .leaflet-control-zoom a { color: var(--text-primary) !important; background: var(--surface) !important; border-color: var(--border) !important; }
+        
+        .locate-btn {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            z-index: 1000;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            box-shadow: 0 2px 12px var(--shadow);
+            color: var(--primary);
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .locate-btn:hover { background: var(--primary); color: white; }
+        .locate-btn:active { transform: scale(0.92); }
+        
+        /* Range Selector Wrapper */
+        .range-selector-wrapper {
+            transition: all 0.3s ease;
+            margin: 8px 0;
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+        .range-selector-wrapper .toggle-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 0 8px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 10px;
+        }
+        .range-selector-wrapper .toggle-header .toggle-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 40px;
+            padding: 4px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .range-selector-wrapper .toggle-header .toggle-btn:hover {
+            background: var(--primary-dark);
+            transform: scale(1.02);
+        }
+        .range-selector-wrapper .toggle-header .toggle-btn:active {
+            transform: scale(0.95);
+        }
+        .range-selector-wrapper .toggle-header .toggle-label-text {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .range-selector-wrapper.hidden {
+            display: none;
+        }
+        
+        /* Station List Container */
+        .station-list-container {
+            transition: all 0.4s ease;
+            overflow: hidden;
+            max-height: 600px;
+            opacity: 1;
+        }
+        .station-list-container.hidden {
+            max-height: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            opacity: 0;
+        }
+        
+        /* Station Item */
+        .station-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            gap: 12px;
+            transition: border-color 0.3s;
+            position: relative;
+        }
+        .station-item:last-child { border-bottom: none; }
+        .station-item .icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .station-item .info { flex: 1; min-width: 0; }
+        .station-item .info .name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+        .station-item .info .address { font-size: 11px; color: var(--text-muted); }
+        .station-item .info .eta { 
+            font-size: 11px; 
+            color: var(--primary); 
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .station-item .info .eta i { font-size: 10px; }
+        .station-item .prices { display: flex; gap: 4px; flex-wrap: wrap; }
+        .station-item .prices .price-tag {
+            font-size: 10px;
+            background: var(--bg);
+            padding: 2px 8px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            text-align: center;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .station-item .prices .price-tag .type { font-size: 8px; color: var(--text-muted); display: block; }
+        .station-item .prices .price-tag .val { font-weight: 600; font-size: 11px; color: var(--text-primary); }
+        .station-item .prices .price-tag .partial { 
+            font-size: 8px; 
+            color: var(--text-muted); 
+            display: block;
+            font-style: italic;
+        }
+        .station-item .badge-recommend {
+            background: var(--success);
+            color: var(--text-primary);
+            font-size: 8px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 40px;
+        }
+        .station-item .badge-distance {
+            background: var(--primary-light);
+            color: var(--primary);
+            font-size: 8px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 40px;
+            border: 1px solid var(--primary);
+        }
+        .station-item .drive-btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 40px;
+            padding: 4px 12px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            white-space: nowrap;
+        }
+        .station-item .drive-btn:hover { background: var(--primary-dark); }
+        .station-item .drive-btn:active { transform: scale(0.95); }
+        .station-item .drive-btn.active-route {
+            background: var(--success);
+            color: var(--text-primary);
+        }
+        .station-item .drive-btn.active-route:hover { background: #3bcc7a; }
+        .station-item.hidden-station {
+            display: none !important;
+        }
+        
+        /* Route active - hides all except selected */
+        .route-active .station-item:not(.active-route-item) {
+            display: none !important;
+        }
+        .route-active .station-item.active-route-item {
+            display: flex !important;
+        }
+        
+        /* Range Buttons */
+        .range-btn {
+            border-radius: 40px;
+            padding: 4px 14px;
+            font-size: 12px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text-muted);
+            transition: 0.2s;
+            cursor: pointer;
+        }
+        .range-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .range-btn:hover:not(.active) { background: var(--border); }
+        
+        /* Fuel Type Buttons */
+        .fuel-type-btn {
+            border-radius: 40px;
+            padding: 4px 16px;
+            font-size: 12px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text-muted);
+            transition: 0.2s;
+            cursor: pointer;
+        }
+        .fuel-type-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .fuel-type-btn:hover:not(.active) { background: var(--border); }
+        
+        /* Admin */
+        .admin-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .admin-stat {
+            background: var(--bg);
+            padding: 14px;
+            border-radius: 12px;
+            text-align: center;
+            transition: background 0.3s;
+        }
+        .admin-stat .num { font-size: 24px; font-weight: 700; color: var(--text-primary); }
+        .admin-stat .lbl { font-size: 11px; color: var(--text-muted); }
+        
+        .user-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .user-list-item:last-child { border-bottom: none; }
+        .user-list-item .user-info .name { font-weight: 500; color: var(--text-primary); }
+        .user-list-item .user-info .email { font-size: 11px; color: var(--text-muted); }
+        .user-list-item .badge-role {
+            font-size: 9px;
+            padding: 2px 10px;
+            border-radius: 40px;
+            font-weight: 600;
+        }
+        .user-list-item .badge-role.admin { background: #fef7e0; color: #b45309; }
+        .user-list-item .badge-role.user { background: #e6f4ea; color: #166534; }
+        [data-theme="dark"] .user-list-item .badge-role.admin { background: #3a2a1a; color: #fbbf24; }
+        [data-theme="dark"] .user-list-item .badge-role.user { background: #1a3a2a; color: #4ade80; }
+        
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            top: 70px;
+            right: 16px;
+            z-index: 9999;
+            max-width: 320px;
+        }
+        .toast-custom {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 12px 16px;
+            box-shadow: 0 4px 20px var(--shadow);
+            border-left: 4px solid var(--success);
+            margin-bottom: 8px;
+            animation: slideInRight 0.3s ease;
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
+        }
+        .toast-custom.error { border-left-color: var(--danger); }
+        .toast-custom.warning { border-left-color: var(--warning); }
+        .toast-custom.info { border-left-color: var(--primary); }
+        @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+        
+        /* Route Panel */
+        .route-panel {
+            position: absolute;
+            bottom: 80px;
+            left: 16px;
+            right: 16px;
+            z-index: 1000;
+            background: var(--surface);
+            border-radius: 16px;
+            padding: 12px 16px;
+            box-shadow: 0 4px 20px var(--shadow);
+            border: 1px solid var(--border);
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            transition: background 0.3s, border-color 0.3s;
+        }
+        .route-panel.active { display: flex; }
+        .route-panel .route-info { display: flex; gap: 16px; font-size: 13px; color: var(--text-primary); }
+        .route-panel .route-info i { color: var(--primary); margin-right: 4px; }
+        .route-panel .route-info span { display: flex; align-items: center; gap: 4px; }
+        .route-panel .route-destination {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 12px;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .cancel-route-btn {
+            background: #fee9e7;
+            border: 1px solid var(--border);
+            border-radius: 40px;
+            padding: 6px 16px;
+            color: #b91c1c;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .cancel-route-btn:hover { background: #fcd4d0; }
+        .cancel-route-btn:active { transform: scale(0.95); }
+        
+        /* Modal */
+        .modal-content {
+            background: var(--surface);
+            color: var(--text-primary);
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+        .modal-header { border-bottom: 1px solid var(--border); padding: 16px 20px; }
+        [data-theme="dark"] .modal-header .btn-close { filter: invert(1); }
+        .modal-body { padding: 20px; }
+        .modal-footer { border-top: 1px solid var(--border); padding: 12px 20px; }
+        .modal .form-control, .modal .form-select {
+            background: var(--input-bg);
+            border: 1.5px solid var(--border);
+            color: var(--text-primary);
+            border-radius: 60px;
+        }
+        .modal .form-control:focus, .modal .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(26, 92, 255, 0.15);
+        }
+        [data-theme="dark"] .modal .form-select { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23e8e8e8' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e"); }
+        
+        .price-edit-btn {
+            background: none;
+            border: none;
+            color: var(--primary);
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .price-edit-btn:hover { text-decoration: underline; }
+        
+        /* ESP32 Device Controls */
+        .esp-controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .esp-controls .btn {
+            border-radius: 40px;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 8px 20px;
+            flex: 1;
+            min-width: 80px;
+        }
+        
+        /* Loading animation for ETA */
+        .eta-loading {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        @media (max-width: 576px) {
+            .page { padding: 12px 12px 80px 12px; }
+            .fuel-gauge { width: 120px; height: 120px; }
+            .fuel-gauge .center-text .pct { font-size: 24px; }
+            .admin-stats { grid-template-columns: 1fr 1fr; gap: 6px; }
+            .bottom-nav .nav-item { font-size: 8px; min-width: 40px; }
+            .bottom-nav .nav-item i { font-size: 16px; }
+            .route-panel { bottom: 76px; left: 12px; right: 12px; flex-wrap: wrap; }
+            .route-panel .route-info { font-size: 12px; gap: 10px; }
+            .route-panel .route-destination { max-width: 80px; }
+            .station-item { flex-wrap: wrap; }
+            .station-item .prices { order: 3; width: 100%; }
+            .station-item .drive-btn { order: 4; }
+            .station-item .info .eta { font-size: 10px; }
+            #mapContainer.fullscreen { height: calc(100vh - 180px); }
+            .esp-controls .btn { font-size: 11px; padding: 6px 12px; }
+            .bottom-nav { height: 56px; padding: 4px 0 8px; }
+            .range-selector-wrapper { padding: 10px 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ===== TOP NAVBAR ===== -->
+<nav class="navbar-custom" id="mainNavbar">
+    <div class="d-flex justify-content-between align-items-center">
+        <a href="#" class="brand" onclick="navigateTo('dashboard')">⛽ iFuel<span>Mo</span></a>
+        <div class="d-flex align-items-center gap-2">
+            <span class="esp-status disconnected" id="espStatus">
+                <i class="fas fa-microchip"></i> <span id="espStatusText">Disconnected</span>
+            </span>
+            <button class="theme-toggle" id="themeToggle" title="Toggle Dark Mode">
+                <i class="fas fa-moon" id="themeIcon"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" id="logoutBtn" style="border-radius:40px;" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- ===== TOAST ===== -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ===== PAGE: DASHBOARD ===== -->
+<div id="page-dashboard" class="page active">
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h5 class="mb-0" style="font-weight:700;color:var(--text-primary);">Welcome back, <span id="dashUserName">User</span>! 👋</h5>
+            <small class="text-muted" id="dashMotorcycle">Yamaha Mio Sporty 2023</small>
+        </div>
+        <div class="position-relative">
+            <i class="fas fa-bell" style="font-size:20px;color:var(--text-muted);cursor:pointer;"></i>
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:9px;">3</span>
+        </div>
+    </div>
+    
+    <!-- ESP32 -->
+    <div class="esp-sim" id="espSim">
+        <div>
+            <span class="status-dot offline" id="espDot"></span>
+            <span style="font-weight:500;font-size:14px;">ESP32 Device</span>
+            <span style="font-size:12px;color:var(--text-muted);display:block;font-weight:400;" id="espLastSync">Disconnected</span>
+        </div>
+        <div>
+            <button class="btn btn-sm btn-outline-success" id="espToggleBtn" onclick="toggleESP32()">
+                <i class="fas fa-plug"></i> Connect
+            </button>
+        </div>
+    </div>
+    
+    <!-- Fuel Gauge -->
+    <div class="card-custom">
+        <div class="fuel-gauge">
+            <div class="level" id="fuelLevel" style="height:65%;"></div>
+            <div class="center-text">
+                <div class="pct" id="fuelPercent">65%</div>
+                <div class="label">Fuel Level</div>
+            </div>
+        </div>
+        <div class="row text-center mt-3 g-2">
+            <div class="col-4"><small class="text-muted">Range</small><div class="fw-bold" id="dashRange">45 km</div></div>
+            <div class="col-4"><small class="text-muted">Consumption</small><div class="fw-bold">35 km/L</div></div>
+            <div class="col-4"><small class="text-muted">Status</small><div class="fw-bold text-success" id="dashStatus">Normal</div></div>
+        </div>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="row g-2">
+        <div class="col-3"><button class="btn btn-primary w-100 py-2" style="border-radius:12px;font-size:12px;font-weight:600;" onclick="navigateTo('map')"><i class="fas fa-map"></i> Map</button></div>
+        <div class="col-3"><button class="btn btn-outline-primary w-100 py-2" style="border-radius:12px;font-size:12px;font-weight:600;" onclick="navigateTo('prices')"><i class="fas fa-chart-line"></i> Prices</button></div>
+        <div class="col-3"><button class="btn btn-outline-primary w-100 py-2" style="border-radius:12px;font-size:12px;font-weight:600;" onclick="navigateTo('analytics')"><i class="fas fa-chart-pie"></i> Analytics</button></div>
+        <div class="col-3"><button class="btn btn-outline-primary w-100 py-2" style="border-radius:12px;font-size:12px;font-weight:600;" onclick="navigateTo('device')"><i class="fas fa-cog"></i> Device</button></div>
+    </div>
+    
+    <!-- Recent Fuel History -->
+    <div class="card-custom mt-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <span class="card-title mb-0">Recent Fuel History</span>
+            <small class="text-muted">See All</small>
+        </div>
+        <div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span class="text-muted">Today 08:30</span> · 65% · 1,250 km
+        </div>
+        <div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);">
+            <span class="text-muted">Jun 29 18:00</span> · 42% · 1,210 km
+        </div>
+        <div style="font-size:13px;padding:6px 0;">
+            <span class="text-muted">Jun 28 07:15</span> · 80% · 1,150 km
+        </div>
+    </div>
+</div>
+
+<!-- ===== PAGE: MAP ===== -->
+<div id="page-map" class="page">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h5 class="mb-0 fw-bold"><i class="fas fa-map-location-dot" style="color:var(--primary);"></i> Nearby Stations</h5>
+        <span class="badge bg-primary" id="stationCount">0 found</span>
+    </div>
+    
+    <div id="mapContainer">
+        <div id="map"></div>
+        <div id="routePanel" class="route-panel">
+            <div class="route-info">
+                <span><i class="fas fa-route"></i> <span id="routeDistance">0</span> km</span>
+                <span><i class="fas fa-clock"></i> <span id="routeETA">0</span> min</span>
+                <span class="route-destination" id="routeDestination">-</span>
+            </div>
+            <button class="cancel-route-btn" id="cancelRouteBtn">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+        </div>
+        <button class="locate-btn" id="locateBtn">
+            <i class="fas fa-crosshairs"></i>
+        </button>
+    </div>
+    
+    <!-- Range Selector with Toggle Button -->
+    <div class="range-selector-wrapper" id="rangeSelectorWrapper">
+        <div class="toggle-header">
+            <span class="toggle-label-text">
+                <i class="fas fa-list"></i> <span id="stationListLabel">Stations</span>
+                <span class="badge bg-primary ms-1" id="stationListCount">0</span>
+            </span>
+            <button class="toggle-btn" id="toggleStationListBtn">
+                <i class="fas fa-eye" id="toggleEyeIcon"></i>
+                <span id="toggleLabel">Hide</span>
+            </button>
+        </div>
+        <div class="d-flex gap-1 flex-wrap">
+            <button class="range-btn active" data-range="3">3km</button>
+            <button class="range-btn" data-range="5">5km</button>
+            <button class="range-btn" data-range="10">10km</button>
+            <button class="range-btn" data-range="25">25km</button>
+            <button class="range-btn" data-range="50">50km</button>
+        </div>
+    </div>
+    
+    <!-- Station List -->
+    <div class="station-list-container" id="stationListContainer">
+        <div id="stationList">
+            <div class="text-center text-muted py-3">Loading stations...</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== PAGE: PRICES ===== -->
+<div id="page-prices" class="page">
+    <h5 class="fw-bold mb-3"><i class="fas fa-chart-line" style="color:var(--primary);"></i> Fuel Price Trends</h5>
+    <div class="card-custom">
+        <div class="d-flex gap-2 mb-2 flex-wrap">
+            <button class="fuel-type-btn active" data-fuel="unleaded">Unleaded</button>
+            <button class="fuel-type-btn" data-fuel="premium">Premium</button>
+            <button class="fuel-type-btn" data-fuel="diesel">Diesel</button>
+        </div>
+        <div class="text-center p-3" style="background:var(--bg);border-radius:12px;transition:background 0.3s;">
+            <div class="text-muted" style="font-size:12px;">Current Average</div>
+            <div style="font-size:32px;font-weight:700;" id="avgPrice">₱58.50 <span style="font-size:14px;font-weight:400;color:var(--text-muted);">/L</span></div>
+        </div>
+        <div style="height:120px;background:var(--bg);border-radius:12px;margin-top:12px;padding:12px;position:relative;transition:background 0.3s;">
+            <canvas id="priceChart" style="width:100%;height:100%;"></canvas>
+        </div>
+        <div class="alert alert-success mt-3 mb-0" style="border-radius:12px;font-size:13px;">
+            <i class="fas fa-arrow-up" style="color:var(--success);"></i>
+            <strong>Prediction:</strong> Prices likely to increase in 2-3 days
+            <span class="badge bg-primary float-end">78%</span>
+        </div>
+    </div>
+    <div class="card-custom">
+        <div class="card-title">Price Comparison</div>
+        <div id="priceComparison"></div>
+    </div>
+</div>
+
+<!-- ===== PAGE: ANALYTICS ===== -->
+<div id="page-analytics" class="page">
+    <h5 class="fw-bold mb-3"><i class="fas fa-chart-pie" style="color:var(--primary);"></i> Consumption Analytics</h5>
+    <div class="row g-2 mb-3">
+        <div class="col-6"><div class="card-custom text-center mb-0"><div style="font-size:24px;font-weight:700;">35.5</div><div style="font-size:11px;color:var(--text-muted);">km/L Avg</div></div></div>
+        <div class="col-6"><div class="card-custom text-center mb-0"><div style="font-size:24px;font-weight:700;color:var(--success);">Good</div><div style="font-size:11px;color:var(--text-muted);">Efficiency</div></div></div>
+    </div>
+    <div class="card-custom"><div style="height:100px;background:var(--bg);border-radius:12px;padding:8px;transition:background 0.3s;"><canvas id="consumptionChart" style="width:100%;height:100%;"></canvas></div></div>
+    <div class="row g-2">
+        <div class="col-4"><div class="card-custom text-center mb-0"><div style="font-size:16px;font-weight:700;">1,250</div><div style="font-size:10px;color:var(--text-muted);">km</div></div></div>
+        <div class="col-4"><div class="card-custom text-center mb-0"><div style="font-size:16px;font-weight:700;">35.2</div><div style="font-size:10px;color:var(--text-muted);">L</div></div></div>
+        <div class="col-4"><div class="card-custom text-center mb-0"><div style="font-size:16px;font-weight:700;">₱2,058</div><div style="font-size:10px;color:var(--text-muted);">Cost</div></div></div>
+    </div>
+    <div class="card-custom mt-3"><div class="alert alert-warning mb-0" style="border-radius:12px;font-size:13px;padding:10px 14px;"><i class="fas fa-exclamation-triangle"></i> <span>Anomaly: High consumption detected on Jun 25 (42 km/L → 28 km/L)</span></div></div>
+    <div class="card-custom"><div class="card-title">💡 Efficiency Tips</div><ul style="font-size:13px;color:var(--text-secondary);padding-left:18px;margin:0;"><li>Maintain steady speed for better efficiency</li><li>Check tire pressure regularly</li><li>Avoid aggressive acceleration</li></ul></div>
+</div>
+
+<!-- ===== PAGE: DEVICE (Settings) with ESP32 Controls ===== -->
+<div id="page-device" class="page">
+    <h5 class="fw-bold mb-3"><i class="fas fa-microchip" style="color:var(--primary);"></i> Device Management</h5>
+    
+    <!-- ESP32 Connection Controls -->
+    <div class="card-custom">
+        <div class="card-title"><i class="fas fa-wifi me-2"></i>ESP32 Connection</div>
+        <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="status-dot offline" id="deviceDot" style="width:14px;height:14px;"></div>
+            <div>
+                <div style="font-weight:600;font-size:16px;">iFuelMo-Device-01</div>
+                <div style="font-size:13px;color:var(--danger);" id="deviceStatusText">❌ Disconnected</div>
+            </div>
+            <div class="ms-auto text-end">
+                <div style="font-weight:700;font-size:18px;">85%</div>
+                <div style="font-size:10px;color:var(--text-muted);">Battery</div>
+            </div>
+        </div>
+        <div class="esp-controls">
+            <button class="btn btn-success" id="espConnectBtn" onclick="toggleESP32()">
+                <i class="fas fa-plug"></i> Connect
+            </button>
+            <button class="btn btn-danger" id="espDisconnectBtn" onclick="toggleESP32()" style="display:none;">
+                <i class="fas fa-unlink"></i> Disconnect
+            </button>
+            <button class="btn btn-outline-secondary" onclick="showToast('Scanning for devices...','info')">
+                <i class="fas fa-search"></i> Scan
+            </button>
+        </div>
+        <div class="mt-2" style="font-size:13px;color:var(--text-muted);">
+            <i class="fas fa-clock"></i> <span id="deviceLastSync">Never synced</span>
+        </div>
+    </div>
+    
+    <div class="card-custom">
+        <div class="card-title">Alert Thresholds</div>
+        <div class="d-flex align-items-center justify-content-between py-2"><span style="font-size:13px;">Low Fuel Alert</span><div class="d-flex align-items-center gap-2"><span style="font-weight:600;font-size:13px;">20%</span><input type="range" class="form-range" style="width:100px;padding:0;" min="5" max="50" value="20"></div></div>
+        <div class="d-flex align-items-center justify-content-between py-2 border-top"><span style="font-size:13px;">Critical Fuel Alert</span><div class="d-flex align-items-center gap-2"><span style="font-weight:600;font-size:13px;">10%</span><input type="range" class="form-range" style="width:100px;padding:0;" min="2" max="25" value="10"></div></div>
+        <div class="d-flex align-items-center justify-content-between py-2 border-top"><span style="font-size:13px;">Abnormal Consumption</span><div class="d-flex align-items-center gap-2"><span style="font-weight:600;font-size:13px;">150%</span><input type="range" class="form-range" style="width:100px;padding:0;" min="100" max="300" value="150"></div></div>
+    </div>
+    
+    <div class="row g-2">
+        <div class="col-6"><button class="btn btn-outline-primary w-100 py-2" style="border-radius:12px;font-size:13px;font-weight:500;" onclick="showToast('Calibrating sensor...','warning')"><i class="fas fa-calendar-alt"></i> Calibrate</button></div>
+        <div class="col-6"><button class="btn btn-outline-primary w-100 py-2" style="border-radius:12px;font-size:13px;font-weight:500;" onclick="showToast('Loading device logs...','info')"><i class="fas fa-history"></i> View Logs</button></div>
+    </div>
+    
+    <button class="btn btn-outline-danger w-100 mt-2 py-2" style="border-radius:12px;font-weight:600;" onclick="showToast('Device unpaired','error')"><i class="fas fa-unlink"></i> Unpair Device</button>
+</div>
+
+<!-- ===== PAGE: ADMIN ===== -->
+<div id="page-admin" class="page">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0"><i class="fas fa-shield-alt" style="color:var(--primary);"></i> Admin Dashboard</h5>
+        <span class="badge bg-success">Live</span>
+    </div>
+    <div class="admin-stats">
+        <div class="admin-stat"><div class="num" id="totalUsers">0</div><div class="lbl">Total Users</div></div>
+        <div class="admin-stat"><div class="num">1,180</div><div class="lbl">IoT Devices</div></div>
+        <div class="admin-stat"><div class="num">99.8%</div><div class="lbl">Uptime</div></div>
+        <div class="admin-stat"><div class="num" style="color:var(--success);">Updated</div><div class="lbl">Price Data</div></div>
+    </div>
+    <div class="card-custom">
+        <div class="card-title"><i class="fas fa-users me-2"></i>Registered Users</div>
+        <div id="userList"><div class="text-center text-muted py-2">Loading users...</div></div>
+    </div>
+    <div class="card-custom">
+        <div class="card-title"><i class="fas fa-gas-pump me-2"></i>Gas Station Price Management</div>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover" style="font-size:13px;">
+                <thead><tr><th>Station</th><th>Unleaded</th><th>Premium</th><th>Diesel</th><th>Action</th></tr></thead>
+                <tbody id="adminStationTable"></tbody>
+            </table>
+        </div>
+        <button class="btn btn-sm btn-outline-primary mt-2" onclick="showToast('Add station form coming soon!','info')"><i class="fas fa-plus"></i> Add Station</button>
+    </div>
+    <div class="card-custom">
+        <div class="card-title">Recent Anomalies</div>
+        <div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);"><span class="text-danger">🔴</span> Device #1243: No data for 2 hours</div>
+        <div style="font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);"><span class="text-warning">🟡</span> User #847: Unusual consumption pattern</div>
+        <div style="font-size:13px;padding:6px 0;"><span class="text-success">🟢</span> All other systems normal</div>
+    </div>
+    <button class="btn btn-outline-danger w-100 py-2" style="border-radius:12px;font-weight:600;" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+</div>
+
+<!-- ===== BOTTOM NAV ===== -->
+<nav class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard')">
+        <i class="fas fa-home"></i><span>Home</span>
+    </button>
+    <button class="nav-item" data-page="map" onclick="navigateTo('map')">
+        <i class="fas fa-map"></i><span>Maps</span>
+    </button>
+    <button class="nav-item" data-page="prices" onclick="navigateTo('prices')">
+        <i class="fas fa-chart-line"></i><span>Prices</span>
+    </button>
+    <button class="nav-item" data-page="device" onclick="navigateTo('device')">
+        <i class="fas fa-microchip"></i><span>Device</span>
+    </button>
+    <button class="nav-item" data-page="admin" onclick="navigateTo('admin')" id="adminNavBtn" style="display:none;">
+        <i class="fas fa-shield-alt"></i><span>Admin</span>
+        <span class="badge-dot"></span>
+    </button>
+</nav>
+
+<!-- ===== PRICE MODAL ===== -->
+<div class="modal fade" id="priceModal" tabindex="-1">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title" id="priceModalTitle">Edit Price</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="priceForm">
+                    <input type="hidden" id="editStationId">
+                    <div class="mb-2">
+                        <label style="font-size:13px;font-weight:500;">Fuel Type</label>
+                        <select class="form-select form-select-sm" id="editFuelType">
+                            <option value="unleaded">Unleaded</option>
+                            <option value="premium">Premium</option>
+                            <option value="diesel">Diesel</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:13px;font-weight:500;">Price (₱)</label>
+                        <input type="number" step="0.01" class="form-control form-control-sm" id="editPrice" placeholder="0.00">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="savePrice()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== SCRIPTS ===== -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+<script>
+// ============================================================
+// DATA STORE
+// ============================================================
+const DB = {
+    get(key, defaultVal) {
+        try { const data = localStorage.getItem('ifuelmo_' + key); return data ? JSON.parse(data) : defaultVal; } catch { return defaultVal; }
+    },
+    set(key, val) { localStorage.setItem('ifuelmo_' + key, JSON.stringify(val)); },
+    getUsers() {
+        const users = this.get('users', []);
+        if (!users.find(u => u.email === 'admin@ifuelmo.com')) {
+            users.push({ id: 1, name: 'Admin User', email: 'admin@ifuelmo.com', password: 'admin123', contact: '+63 900 000 0000', motorcycle: 'Admin Account', role: 'admin', createdAt: new Date().toISOString() });
+            this.set('users', users);
+        }
+        return users;
+    },
+    getStations() {
+        return this.get('stations', []);
+    },
+    getCurrentUser() { return this.get('currentUser', null); },
+    setCurrentUser(user) { this.set('currentUser', user); },
+    clearSession() { this.set('currentUser', null); }
+};
+
+// ============================================================
+// STATE
+// ============================================================
+let currentUser = null;
+let isESPConnected = false;
+let espInterval = null;
+let mapInstance = null;
+let markersLayer = null;
+let userMarker = null;
+let watchId = null;
+let userLat = 10.3245;
+let userLng = 123.9494;
+let currentRange = 5;
+let routeControl = null;
+let destinationMarker = null;
+let isMapInitialized = false;
+let fuelLevel = 65;
+let fuelInterval = null;
+let isStationListVisible = true;
+let allStationsData = [];
+let isRouteActive = false;
+let activeRouteDestination = null;
+
+// ============================================================
+// THEME
+// ============================================================
+function loadTheme() {
+    const saved = localStorage.getItem('ifuelmo_theme') || 'light';
+    document.documentElement.setAttribute('data-theme', saved);
+    document.getElementById('themeIcon').className = saved === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+}
+document.getElementById('themeToggle').addEventListener('click', function() {
+    const html = document.documentElement;
+    const current = html.getAttribute('data-theme');
+    const newTheme = current === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', newTheme);
+    document.getElementById('themeIcon').className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+    localStorage.setItem('ifuelmo_theme', newTheme);
+});
+loadTheme();
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast-custom ${type}`;
+    const icons = { success: 'fa-check-circle', error: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' };
+    toast.innerHTML = `<i class="fas ${icons[type] || icons.success} me-2"></i> ${message}`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(40px)';
+        toast.style.transition = '0.3s';
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+function checkAuth() {
+    const user = DB.getCurrentUser();
+    if (!user) {
+        window.location.href = 'index.html';
+        return;
+    }
+    currentUser = user;
+    document.getElementById('dashUserName').textContent = user.name;
+    document.getElementById('dashMotorcycle').textContent = user.motorcycle || 'Motorcycle';
+    
+    const isAdmin = user.role === 'admin';
+    document.getElementById('adminNavBtn').style.display = isAdmin ? 'flex' : 'none';
+    
+    if (isAdmin) {
+        updateAdminPanel();
+    }
+}
+
+function logout() {
+    DB.clearSession();
+    if (espInterval) clearInterval(espInterval);
+    if (fuelInterval) clearInterval(fuelInterval);
+    if (watchId) navigator.geolocation.clearWatch(watchId);
+    window.location.href = 'index.html';
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function navigateTo(page) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + page).classList.add('active');
+    document.querySelectorAll('.bottom-nav .nav-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.page === page);
+    });
+    if (page === 'map' && !isMapInitialized) setTimeout(initMap, 300);
+    if (page === 'admin' && currentUser && currentUser.role === 'admin') updateAdminPanel();
+    if (page === 'prices') { drawPriceChart(); updatePriceComparison(); }
+}
+
+// ============================================================
+// STATION LIST TOGGLE
+// ============================================================
+document.getElementById('toggleStationListBtn').addEventListener('click', function() {
+    const container = document.getElementById('stationListContainer');
+    const eyeIcon = document.getElementById('toggleEyeIcon');
+    const label = document.getElementById('toggleLabel');
+    const stationListLabel = document.getElementById('stationListLabel');
+    const mapContainer = document.getElementById('mapContainer');
+    
+    isStationListVisible = !isStationListVisible;
+    
+    if (isStationListVisible) {
+        container.classList.remove('hidden');
+        eyeIcon.className = 'fas fa-eye';
+        label.textContent = 'Hide';
+        stationListLabel.textContent = 'Stations';
+        mapContainer.classList.remove('fullscreen');
+        setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 400);
+    } else {
+        container.classList.add('hidden');
+        eyeIcon.className = 'fas fa-eye-slash';
+        label.textContent = 'Show';
+        stationListLabel.textContent = 'Stations (hidden)';
+        mapContainer.classList.add('fullscreen');
+        setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 400);
+    }
+});
+
+// ============================================================
+// ESP32
+// ============================================================
+function toggleESP32() {
+    isESPConnected = !isESPConnected;
+    const statusEl = document.getElementById('espStatus');
+    const dotEl = document.getElementById('espDot');
+    const statusText = document.getElementById('espStatusText');
+    const lastSync = document.getElementById('espLastSync');
+    const toggleBtn = document.getElementById('espToggleBtn');
+    const deviceDot = document.getElementById('deviceDot');
+    const deviceStatusText = document.getElementById('deviceStatusText');
+    const deviceLastSync = document.getElementById('deviceLastSync');
+    const connectBtn = document.getElementById('espConnectBtn');
+    const disconnectBtn = document.getElementById('espDisconnectBtn');
+    
+    if (isESPConnected) {
+        statusEl.className = 'esp-status connected';
+        statusText.textContent = 'Connected';
+        dotEl.className = 'status-dot online';
+        lastSync.textContent = 'Connected · Last sync: just now';
+        toggleBtn.className = 'btn btn-sm btn-outline-danger';
+        toggleBtn.innerHTML = '<i class="fas fa-plug"></i> Disconnect';
+        if (deviceDot) deviceDot.className = 'status-dot online';
+        if (deviceStatusText) { deviceStatusText.textContent = '✅ Connected'; deviceStatusText.style.color = '#166534'; }
+        if (deviceLastSync) deviceLastSync.textContent = 'Last sync: just now';
+        if (connectBtn) connectBtn.style.display = 'none';
+        if (disconnectBtn) { disconnectBtn.style.display = 'inline-flex'; }
+        showToast('ESP32 Connected Successfully!', 'success');
+        
+        if (fuelInterval) clearInterval(fuelInterval);
+        fuelInterval = setInterval(() => {
+            fuelLevel = 30 + Math.floor(Math.random() * 50);
+            updateFuelDisplay();
+        }, 60000);
+        
+        fuelLevel = 30 + Math.floor(Math.random() * 50);
+        updateFuelDisplay();
+    } else {
+        statusEl.className = 'esp-status disconnected';
+        statusText.textContent = 'Disconnected';
+        dotEl.className = 'status-dot offline';
+        lastSync.textContent = 'Disconnected';
+        toggleBtn.className = 'btn btn-sm btn-outline-success';
+        toggleBtn.innerHTML = '<i class="fas fa-plug"></i> Connect';
+        if (deviceDot) deviceDot.className = 'status-dot offline';
+        if (deviceStatusText) { deviceStatusText.textContent = '❌ Disconnected'; deviceStatusText.style.color = '#b91c1c'; }
+        if (deviceLastSync) deviceLastSync.textContent = 'Never synced';
+        if (connectBtn) connectBtn.style.display = 'inline-flex';
+        if (disconnectBtn) disconnectBtn.style.display = 'none';
+        if (fuelInterval) clearInterval(fuelInterval);
+        showToast('ESP32 Disconnected', 'error');
+    }
+}
+
+function updateFuelDisplay() {
+    document.getElementById('fuelPercent').textContent = fuelLevel + '%';
+    document.getElementById('fuelLevel').style.height = fuelLevel + '%';
+    const levelEl = document.getElementById('fuelLevel');
+    levelEl.className = 'level' + (fuelLevel < 20 ? ' critical' : fuelLevel < 35 ? ' warning' : '');
+    const range = Math.round((fuelLevel / 100) * 65);
+    document.getElementById('dashRange').textContent = range + ' km';
+    const statusEl = document.getElementById('dashStatus');
+    if (fuelLevel < 20) {
+        statusEl.textContent = '⚠️ Critical';
+        statusEl.className = 'fw-bold text-danger';
+        if (isESPConnected) showToast('⚠️ Critical fuel level! Refuel now.', 'error');
+    } else if (fuelLevel < 35) {
+        statusEl.textContent = '⚠️ Warning';
+        statusEl.className = 'fw-bold text-warning';
+        if (isESPConnected) showToast('⚠️ Low fuel warning. Find a gas station soon.', 'warning');
+    } else {
+        statusEl.textContent = '✅ Normal';
+        statusEl.className = 'fw-bold text-success';
+    }
+}
+
+// ============================================================
+// HAVERSINE DISTANCE CALCULATION
+// ============================================================
+function calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+// ============================================================
+// ESTIMATE ETA
+// ============================================================
+function estimateETA(distanceKm) {
+    const avgSpeed = 40;
+    const timeHours = distanceKm / avgSpeed;
+    const timeMinutes = Math.round(timeHours * 60);
+    return timeMinutes;
+}
+
+// ============================================================
+// GENERATE RANDOM PRICES
+// ============================================================
+function generateRandomPrices() {
+    // Generate realistic Philippine fuel prices
+    const baseUnleaded = 55 + Math.random() * 8; // 55-63
+    const basePremium = baseUnleaded + 3 + Math.random() * 4; // +3-7
+    const baseDiesel = baseUnleaded - 2 + Math.random() * 4; // -2 to +2
+    
+    return {
+        unleaded: Math.round(baseUnleaded * 100) / 100,
+        premium: Math.round(basePremium * 100) / 100,
+        diesel: Math.round(baseDiesel * 100) / 100
+    };
+}
+
+// ============================================================
+// MAP
+// ============================================================
+function initMap() {
+    if (isMapInitialized) return;
+    mapInstance = L.map('map').setView([userLat, userLng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 }).addTo(mapInstance);
+    markersLayer = L.layerGroup().addTo(mapInstance);
+    
+    if (navigator.geolocation) {
+        watchId = navigator.geolocation.watchPosition(
+            pos => { 
+                userLat = pos.coords.latitude; 
+                userLng = pos.coords.longitude; 
+                updateUserMarker(userLat, userLng); 
+                mapInstance.setView([userLat, userLng], 15); 
+                if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); 
+            },
+            err => { console.warn('Location error:', err.message); if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); },
+            { enableHighAccuracy: true, distanceFilter: 10 }
+        );
+    } else {
+        if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange);
+    }
+    
+    document.getElementById('locateBtn').addEventListener('click', function() {
+        if (navigator.geolocation) {
+            // Show loading state
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            
+            navigator.geolocation.getCurrentPosition(
+                pos => { 
+                    userLat = pos.coords.latitude; 
+                    userLng = pos.coords.longitude; 
+                    updateUserMarker(userLat, userLng);
+                    
+                    // Smooth zoom to current location
+                    if (mapInstance) {
+                        mapInstance.flyTo([userLat, userLng], 15, {
+                            duration: 1.5,
+                            easeLinearity: 0.25
+                        });
+                    }
+                    
+                    if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); 
+                    showToast('📍 Location updated!', 'success');
+                    
+                    // Reset button
+                    document.getElementById('locateBtn').innerHTML = '<i class="fas fa-crosshairs"></i>';
+                },
+                (err) => {
+                    console.error('Geolocation error:', err);
+                    showToast('Unable to get location. Please enable GPS.', 'error');
+                    document.getElementById('locateBtn').innerHTML = '<i class="fas fa-crosshairs"></i>';
+                },
+                { 
+                    enableHighAccuracy: true, 
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        } else {
+            showToast('Geolocation not supported by your browser', 'error');
+        }
+    });
+    
+    document.getElementById('cancelRouteBtn').addEventListener('click', function() {
+        cancelRoute();
+    });
+    
+    isMapInitialized = true;
+}
+
+function updateUserMarker(lat, lng) {
+    if (userMarker) { 
+        userMarker.setLatLng([lat, lng]); 
+        return; 
+    }
+    const icon = L.divIcon({ 
+        html: '<i class="fas fa-circle" style="color:#1a5cff;font-size:20px;text-shadow:0 0 8px rgba(26,92,255,0.5);"></i>', 
+        className: '', 
+        iconSize: [20, 20], 
+        iconAnchor: [10, 10] 
+    });
+    userMarker = L.marker([lat, lng], { icon }).addTo(mapInstance).bindPopup('📍 You are here');
+}
+
+function findNearbyStations(lat, lng, rangeKm) {
+    if (isRouteActive) return;
+    
+    currentRange = rangeKm || 5;
+    const radius = currentRange * 1000;
+    document.getElementById('stationCount').textContent = '...';
+    document.getElementById('stationList').innerHTML = '<div class="text-center text-muted py-3">Searching...</div>';
+    
+    const query = `[out:json];(node["amenity"="fuel"](around:${radius},${lat},${lng});way["amenity"="fuel"](around:${radius},${lat},${lng}););out center;`;
+    
+    fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: 'data=' + encodeURIComponent(query),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        markersLayer.clearLayers();
+        if (userMarker) userMarker.addTo(mapInstance);
+        const dbStations = DB.getStations();
+        const osmStations = (data.elements || []).filter(el => el.tags && el.tags.name);
+        const allStations = [...dbStations];
+        
+        osmStations.forEach(osm => {
+            const lat = osm.lat || (osm.center && osm.center.lat);
+            const lng = osm.lon || (osm.center && osm.center.lon);
+            if (!lat || !lng) return;
+            
+            // Check if station already exists in db
+            const existing = allStations.find(s => Math.abs(s.lat - lat) < 0.001 && Math.abs(s.lng - lng) < 0.001);
+            if (!existing) {
+                // Generate random prices for new stations
+                const prices = generateRandomPrices();
+                allStations.push({ 
+                    id: Date.now() + Math.random() * 1000, 
+                    name: osm.tags.name || 'Gas Station', 
+                    brand: osm.tags.brand || '', 
+                    lat: lat, 
+                    lng: lng, 
+                    unleaded: prices.unleaded,
+                    premium: prices.premium,
+                    diesel: prices.diesel,
+                    address: osm.tags['addr:street'] || osm.tags['addr:place'] || '' 
+                });
+            }
+        });
+        
+        // Calculate distances for all stations
+        allStations.forEach(station => {
+            station.distance = calculateDistance(lat, lng, station.lat, station.lng);
+            station.eta = estimateETA(station.distance);
+        });
+        
+        // Sort by distance
+        allStations.sort((a, b) => a.distance - b.distance);
+        allStationsData = allStations;
+        
+        document.getElementById('stationCount').textContent = allStations.length + ' found';
+        document.getElementById('stationListCount').textContent = allStations.length;
+        
+        // Clear previous markers
+        markersLayer.clearLayers();
+        if (userMarker) userMarker.addTo(mapInstance);
+        
+        // Add markers for ALL stations
+        allStations.forEach(station => {
+            const lat = station.lat; const lng = station.lng;
+            if (!lat || !lng) return;
+            const hasPrices = station.unleaded !== null && station.unleaded !== undefined;
+            const isRecommended = hasPrices && station.unleaded < 58;
+            
+            const icon = L.divIcon({ 
+                html: `<div style="background:white;border-radius:50%;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);border:2px solid ${isRecommended ? '#4ade80' : '#1a5cff'};">
+                    <i class="fas fa-gas-pump" style="color:${isRecommended ? '#4ade80' : '#1a5cff'};font-size:12px;"></i>
+                </div>`, 
+                className: '', 
+                iconSize: [28, 28], 
+                iconAnchor: [14, 28] 
+            });
+            const marker = L.marker([lat, lng], { icon }).addTo(markersLayer);
+            marker.bindPopup(`
+                <strong>${station.name}</strong><br>
+                ${station.brand || ''}<br>
+                ${hasPrices ? `Unleaded: ₱${station.unleaded.toFixed(2)} | Premium: ₱${station.premium.toFixed(2)} | Diesel: ₱${station.diesel.toFixed(2)}` : 'No prices set'}<br>
+                📍 ${station.distance.toFixed(1)} km away<br>
+                ${station.address || ''}
+                <button class="btn btn-sm btn-primary mt-2" onclick="startRoute(${lat}, ${lng}, '${station.name}')" style="width:100%;border-radius:40px;">
+                    <i class="fas fa-car"></i> Drive Now
+                </button>
+            `);
+        });
+        
+        // Build station list - ALL stations
+        let html = '';
+        allStations.forEach((station) => {
+            const lat = station.lat; const lng = station.lng;
+            if (!lat || !lng) return;
+            const unleaded = station.unleaded !== null && station.unleaded !== undefined ? station.unleaded : null;
+            const premium = station.premium !== null && station.premium !== undefined ? station.premium : null;
+            const diesel = station.diesel !== null && station.diesel !== undefined ? station.diesel : null;
+            const hasAllPrices = unleaded !== null && premium !== null && diesel !== null;
+            const hasPartialPrices = (unleaded !== null || premium !== null || diesel !== null);
+            const distance = station.distance.toFixed(1);
+            const eta = station.eta;
+            const isRecommended = hasPartialPrices && unleaded !== null && unleaded < 58;
+            
+            html += `<div class="station-item ${isRouteActive && activeRouteDestination && activeRouteDestination.id !== station.id ? 'hidden-station' : ''} ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route-item' : ''}" id="station-${station.id}" data-station-id="${station.id}">
+                <div class="icon"><i class="fas fa-gas-pump"></i></div>
+                <div class="info">
+                    <div class="name">${station.name}</div>
+                    <div class="address">${station.address || 'Cebu City'}</div>
+                    <div class="eta">
+                        <i class="fas fa-clock"></i> ${eta} min ETA · 
+                        <i class="fas fa-route"></i> ${distance} km
+                        ${isRecommended ? ' · <span style="color:#4ade80;">Best Price!</span>' : ''}
+                    </div>
+                </div>
+                <div class="prices">
+                    ${hasAllPrices ? 
+                        `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${unleaded.toFixed(2)}</span></span>
+                         <span class="price-tag"><span class="type">Premium</span><span class="val">₱${premium.toFixed(2)}</span></span>
+                         <span class="price-tag"><span class="type">Diesel</span><span class="val">₱${diesel.toFixed(2)}</span></span>` : 
+                    hasPartialPrices ?
+                        `${unleaded !== null ? `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${unleaded.toFixed(2)}</span></span>` : ''}
+                         ${premium !== null ? `<span class="price-tag"><span class="type">Premium</span><span class="val">₱${premium.toFixed(2)}</span></span>` : ''}
+                         ${diesel !== null ? `<span class="price-tag"><span class="type">Diesel</span><span class="val">₱${diesel.toFixed(2)}</span></span>` : ''}
+                         ${(unleaded === null || premium === null || diesel === null) ? `<span class="price-tag"><span class="partial">Partial</span></span>` : ''}` :
+                        `<span class="text-muted" style="font-size:11px;">No prices</span>`
+                    }
+                </div>
+                ${isRecommended ? '<span class="badge-recommend"><i class="fas fa-star"></i> Best</span>' : ''}
+                <span class="badge-distance"><i class="fas fa-route"></i> ${distance}km</span>
+                <button class="drive-btn ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route' : ''}" onclick="startRoute(${lat}, ${lng}, '${station.name}')" id="drive-btn-${station.id}">
+                    <i class="fas fa-car"></i> ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'Driving' : 'Drive'}
+                </button>
+            </div>`;
+        });
+        
+        document.getElementById('stationList').innerHTML = html || '<div class="text-center text-muted py-3">No stations found in this area</div>';
+        
+        if (markersLayer.getLayers().length > 0) {
+            const bounds = L.latLngBounds(markersLayer.getLayers().map(m => m.getLatLng()));
+            bounds.extend([lat, lng]);
+            mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+        }
+    })
+    .catch((err) => {
+        console.error('Error fetching stations:', err);
+        showFallbackStations(lat, lng);
+    });
+}
+
+function showFallbackStations(lat, lng) {
+    if (isRouteActive) return;
+    
+    const stations = DB.getStations();
+    if (stations.length === 0) {
+        document.getElementById('stationList').innerHTML = '<div class="text-center text-muted py-3">No stations found. Try adding some in Admin panel or check your internet connection.</div>';
+        document.getElementById('stationCount').textContent = '0 found';
+        document.getElementById('stationListCount').textContent = '0';
+        return;
+    }
+    
+    // Calculate distances
+    stations.forEach(station => {
+        station.distance = calculateDistance(lat, lng, station.lat, station.lng);
+        station.eta = estimateETA(station.distance);
+    });
+    stations.sort((a, b) => a.distance - b.distance);
+    allStationsData = stations;
+    
+    markersLayer.clearLayers();
+    if (userMarker) userMarker.addTo(mapInstance);
+    document.getElementById('stationCount').textContent = stations.length + ' found';
+    document.getElementById('stationListCount').textContent = stations.length;
+    
+    // Add markers for ALL stations
+    stations.forEach(station => {
+        const hasPrices = station.unleaded !== null && station.unleaded !== undefined;
+        const isRecommended = hasPrices && station.unleaded < 58;
+        const icon = L.divIcon({ 
+            html: `<div style="background:white;border-radius:50%;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);border:2px solid ${isRecommended ? '#4ade80' : '#1a5cff'};">
+                <i class="fas fa-gas-pump" style="color:${isRecommended ? '#4ade80' : '#1a5cff'};font-size:12px;"></i>
+            </div>`, 
+            className: '', 
+            iconSize: [28, 28], 
+            iconAnchor: [14, 28] 
+        });
+        const marker = L.marker([station.lat, station.lng], { icon }).addTo(markersLayer);
+        marker.bindPopup(`
+            <strong>${station.name}</strong><br>
+            ${station.brand || ''}<br>
+            ${hasPrices ? `Unleaded: ₱${station.unleaded.toFixed(2)} | Premium: ₱${station.premium.toFixed(2)} | Diesel: ₱${station.diesel.toFixed(2)}` : 'No prices set'}<br>
+            📍 ${station.distance.toFixed(1)} km away<br>
+            ${station.address || ''}
+            <button class="btn btn-sm btn-primary mt-2" onclick="startRoute(${station.lat}, ${station.lng}, '${station.name}')" style="width:100%;border-radius:40px;">
+                <i class="fas fa-car"></i> Drive Now
+            </button>
+        `);
+    });
+    
+    // Build station list - ALL stations
+    let html = '';
+    stations.forEach((station) => {
+        const hasPrices = station.unleaded !== null && station.unleaded !== undefined;
+        const isRecommended = hasPrices && station.unleaded < 58;
+        const distance = station.distance.toFixed(1);
+        const eta = station.eta;
+        
+        html += `<div class="station-item ${isRouteActive && activeRouteDestination && activeRouteDestination.id !== station.id ? 'hidden-station' : ''} ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route-item' : ''}" id="station-${station.id}" data-station-id="${station.id}">
+            <div class="icon"><i class="fas fa-gas-pump"></i></div>
+            <div class="info">
+                <div class="name">${station.name}</div>
+                <div class="address">${station.address || 'Cebu City'}</div>
+                <div class="eta">
+                    <i class="fas fa-clock"></i> ${eta} min ETA · 
+                    <i class="fas fa-route"></i> ${distance} km
+                    ${isRecommended ? ' · <span style="color:#4ade80;">Best Price!</span>' : ''}
+                </div>
+            </div>
+            <div class="prices">
+                ${station.unleaded !== null && station.premium !== null && station.diesel !== null ? 
+                    `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${station.unleaded.toFixed(2)}</span></span>
+                     <span class="price-tag"><span class="type">Premium</span><span class="val">₱${station.premium.toFixed(2)}</span></span>
+                     <span class="price-tag"><span class="type">Diesel</span><span class="val">₱${station.diesel.toFixed(2)}</span></span>` : 
+                station.unleaded !== null || station.premium !== null || station.diesel !== null ?
+                    `${station.unleaded !== null ? `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${station.unleaded.toFixed(2)}</span></span>` : ''}
+                     ${station.premium !== null ? `<span class="price-tag"><span class="type">Premium</span><span class="val">₱${station.premium.toFixed(2)}</span></span>` : ''}
+                     ${station.diesel !== null ? `<span class="price-tag"><span class="type">Diesel</span><span class="val">₱${station.diesel.toFixed(2)}</span></span>` : ''}
+                     ${(station.unleaded === null || station.premium === null || station.diesel === null) ? `<span class="price-tag"><span class="partial">Partial</span></span>` : ''}` :
+                    `<span class="text-muted" style="font-size:11px;">No prices</span>`
+            }
+            </div>
+            ${isRecommended ? '<span class="badge-recommend"><i class="fas fa-star"></i> Best</span>' : ''}
+            <span class="badge-distance"><i class="fas fa-route"></i> ${distance}km</span>
+            <button class="drive-btn ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route' : ''}" onclick="startRoute(${station.lat}, ${station.lng}, '${station.name}')" id="drive-btn-${station.id}">
+                <i class="fas fa-car"></i> ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'Driving' : 'Drive'}
+            </button>
+        </div>`;
+    });
+    document.getElementById('stationList').innerHTML = html;
+}
+
+// ============================================================
+// ROUTE - Drive Now with ETA and Cancel
+// ============================================================
+function startRoute(destLat, destLng, destName) {
+    if (!mapInstance) { showToast('Map not initialized. Go to Maps tab first.', 'error'); return; }
+    
+    const destStation = allStationsData.find(s => 
+        Math.abs(s.lat - destLat) < 0.0001 && 
+        Math.abs(s.lng - destLng) < 0.0001
+    );
+    
+    if (!destStation) {
+        showToast('Station not found in list', 'error');
+        return;
+    }
+    
+    if (routeControl) {
+        try { mapInstance.removeControl(routeControl); } catch(e) {}
+        routeControl = null;
+    }
+    if (destinationMarker) {
+        try { mapInstance.removeLayer(destinationMarker); } catch(e) {}
+        destinationMarker = null;
+    }
+    
+    let startLat, startLng;
+    
+    if (userMarker) {
+        const pos = userMarker.getLatLng();
+        startLat = pos.lat;
+        startLng = pos.lng;
+    } else if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            pos => {
+                startLat = pos.coords.latitude;
+                startLng = pos.coords.longitude;
+                drawRoute(startLat, startLng, destLat, destLng, destName, destStation);
+            },
+            () => {
+                const center = mapInstance.getCenter();
+                startLat = center.lat;
+                startLng = center.lng;
+                drawRoute(startLat, startLng, destLat, destLng, destName, destStation);
+            },
+            { enableHighAccuracy: true, timeout: 5000 }
+        );
+        return;
+    } else {
+        const center = mapInstance.getCenter();
+        startLat = center.lat;
+        startLng = center.lng;
+    }
+    
+    drawRoute(startLat, startLng, destLat, destLng, destName, destStation);
+}
+
+function drawRoute(startLat, startLng, endLat, endLng, destName, destStation) {
+    isRouteActive = true;
+    activeRouteDestination = destStation;
+    
+    // Hide all stations except the selected one in the list
+    document.querySelectorAll('.station-item').forEach(el => {
+        const stationId = parseInt(el.dataset.stationId);
+        if (stationId === destStation?.id) {
+            el.classList.remove('hidden-station');
+            el.classList.add('active-route-item');
+        } else {
+            el.classList.add('hidden-station');
+            el.classList.remove('active-route-item');
+        }
+    });
+    
+    // Update drive buttons
+    document.querySelectorAll('.drive-btn').forEach(btn => {
+        btn.classList.remove('active-route');
+        btn.innerHTML = '<i class="fas fa-car"></i> Drive';
+    });
+    const activeBtn = document.getElementById(`drive-btn-${destStation?.id}`);
+    if (activeBtn) {
+        activeBtn.classList.add('active-route');
+        activeBtn.innerHTML = '<i class="fas fa-route"></i> Driving';
+    }
+    
+    // Clear and re-add markers - only show the selected station marker
+    markersLayer.clearLayers();
+    if (userMarker) userMarker.addTo(mapInstance);
+    
+    // Add marker for destination
+    const hasPrices = destStation.unleaded !== null && destStation.unleaded !== undefined;
+    const icon = L.divIcon({ 
+        html: `<div style="background:white;border-radius:50%;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,0.2);border:2px solid #4ade80;">
+            <i class="fas fa-gas-pump" style="color:#4ade80;font-size:16px;"></i>
+        </div>`, 
+        className: '', 
+        iconSize: [36, 36], 
+        iconAnchor: [18, 36] 
+    });
+    const destMarker = L.marker([endLat, endLng], { icon }).addTo(markersLayer);
+    destMarker.bindPopup(`
+        <strong>${destStation.name}</strong><br>
+        ${destStation.brand || ''}<br>
+        ${hasPrices ? `Unleaded: ₱${destStation.unleaded.toFixed(2)} | Premium: ₱${destStation.premium.toFixed(2)} | Diesel: ₱${destStation.diesel.toFixed(2)}` : 'No prices set'}<br>
+        📍 Your destination
+    `);
+    
+    routeControl = L.Routing.control({
+        waypoints: [L.latLng(startLat, startLng), L.latLng(endLat, endLng)],
+        routeWhileDragging: false,
+        showAlternatives: false,
+        addWaypoints: false,
+        fitSelectedRoutes: true,
+        lineOptions: { styles: [{ color: '#1a5cff', weight: 5, opacity: 0.8 }], extendToWaypoints: true },
+        router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' })
+    }).addTo(mapInstance);
+    
+    document.getElementById('routePanel').classList.add('active');
+    document.getElementById('routeDestination').textContent = destName;
+    
+    setTimeout(() => { document.querySelectorAll('.leaflet-routing-container').forEach(el => el.style.display = 'none'); }, 200);
+    
+    routeControl.on('routesfound', function(e) {
+        const route = e.routes[0];
+        if (route && route.summary) {
+            const distance = (route.summary.totalDistance / 1000).toFixed(1);
+            const time = Math.round(route.summary.totalTime / 60);
+            document.getElementById('routeDistance').textContent = distance;
+            document.getElementById('routeETA').textContent = time;
+        }
+    });
+    
+    const destIcon = L.divIcon({ 
+        html: '<i class="fas fa-flag-checkered" style="color:#ef4444;font-size:24px;text-shadow:0 0 8px rgba(239,68,68,0.3);"></i>', 
+        className: '', 
+        iconSize: [24, 24], 
+        iconAnchor: [12, 24] 
+    });
+    destinationMarker = L.marker([endLat, endLng], { icon: destIcon }).addTo(mapInstance).bindPopup(`<strong>📍 ${destName}</strong><br>Your destination`);
+    
+    const bounds = L.latLngBounds([startLat, startLng], [endLat, endLng]);
+    mapInstance.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
+    
+    showToast(`🚗 Route to ${destName} started! Follow the blue line.`, 'success');
+}
+
+function cancelRoute() {
+    isRouteActive = false;
+    activeRouteDestination = null;
+    
+    // Show all stations again
+    document.querySelectorAll('.station-item').forEach(el => {
+        el.classList.remove('hidden-station');
+        el.classList.remove('active-route-item');
+    });
+    
+    // Reset all drive buttons
+    document.querySelectorAll('.drive-btn').forEach(btn => {
+        btn.classList.remove('active-route');
+        btn.innerHTML = '<i class="fas fa-car"></i> Drive';
+    });
+    
+    if (routeControl) { 
+        try { mapInstance.removeControl(routeControl); } catch(e) {} 
+        routeControl = null; 
+    }
+    if (destinationMarker) { 
+        try { mapInstance.removeLayer(destinationMarker); } catch(e) {} 
+        destinationMarker = null; 
+    }
+    document.getElementById('routePanel').classList.remove('active');
+    document.getElementById('routeDestination').textContent = '-';
+    showToast('Route cancelled', 'info');
+    
+    // Refresh stations - show all again
+    if (mapInstance) {
+        findNearbyStations(userLat, userLng, currentRange);
+    }
+}
+
+// ============================================================
+// RANGE SELECTOR
+// ============================================================
+document.querySelectorAll('.range-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        if (isRouteActive) {
+            showToast('Please cancel current route first to change range', 'warning');
+            return;
+        }
+        document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        currentRange = parseInt(this.dataset.range);
+        if (mapInstance) findNearbyStations(userLat, userLng, currentRange);
+    });
+});
+
+// ============================================================
+// PRICE TRENDS
+// ============================================================
+function drawPriceChart() {
+    const canvas = document.getElementById('priceChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const width = rect.width - 24;
+    const height = 100;
+    canvas.width = width; canvas.height = height;
+    const prices = [58.5, 58.8, 59.2, 59.0, 58.7, 59.5, 58.5, 58.0, 58.5, 59.0, 59.8, 60.2];
+    const max = Math.max(...prices) + 2; const min = Math.min(...prices) - 2;
+    ctx.clearRect(0, 0, width, height);
+    ctx.beginPath();
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    ctx.strokeStyle = isDark ? '#4a9eff' : '#1a5cff';
+    ctx.lineWidth = 2.5;
+    prices.forEach((p, i) => {
+        const x = (i / (prices.length - 1)) * width;
+        const y = height - ((p - min) / (max - min)) * (height - 10) - 5;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.lineTo(width, height); ctx.lineTo(0, height); ctx.closePath();
+    ctx.fillStyle = isDark ? 'rgba(74, 158, 255, 0.15)' : 'rgba(26, 92, 255, 0.1)';
+    ctx.fill();
+}
+
+function updatePriceComparison() {
+    const stations = DB.getStations();
+    const container = document.getElementById('priceComparison');
+    let html = '';
+    stations.slice(0, 6).forEach(s => {
+        if (s.unleaded !== null && s.unleaded !== undefined) {
+            html += `<div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid var(--border);"><span style="font-weight:500;font-size:13px;">${s.name}</span><span style="font-weight:700;font-size:14px;color:var(--primary);">₱${s.unleaded.toFixed(2)}</span></div>`;
+        }
+    });
+    container.innerHTML = html || '<div class="text-muted text-center py-2">No prices available</div>';
+}
+
+document.querySelectorAll('.fuel-type-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.fuel-type-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        const fuelType = this.dataset.fuel;
+        const stations = DB.getStations();
+        const prices = stations.filter(s => s[fuelType] !== null && s[fuelType] !== undefined).map(s => s[fuelType]);
+        const avg = prices.length > 0 ? prices.reduce((a,b) => a + b, 0) / prices.length : 0;
+        document.getElementById('avgPrice').innerHTML = `₱${avg.toFixed(2)} <span style="font-size:14px;font-weight:400;color:var(--text-muted);">/L</span>`;
+        showToast(`Showing ${fuelType} prices`, 'info');
+        drawPriceChart();
+    });
+});
+
+// ============================================================
+// CONSUMPTION CHART
+// ============================================================
+function drawConsumptionChart() {
+    const canvas = document.getElementById('consumptionChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.parentElement.getBoundingClientRect();
+    const width = rect.width - 16;
+    const height = 90;
+    canvas.width = width; canvas.height = height;
+    const data = [35, 38, 32, 36, 40, 35, 30, 38, 42, 35];
+    const max = Math.max(...data) + 5; const min = Math.min(...data) - 5;
+    ctx.clearRect(0, 0, width, height);
+    ctx.beginPath();
+    ctx.strokeStyle = '#4ade80';
+    ctx.lineWidth = 2.5;
+    data.forEach((d, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - ((d - min) / (max - min)) * (height - 10) - 5;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+}
+
+// ============================================================
+// ADMIN
+// ============================================================
+function updateAdminPanel() {
+    if (!currentUser || currentUser.role !== 'admin') return;
+    const users = DB.getUsers();
+    document.getElementById('totalUsers').textContent = users.length;
+    const container = document.getElementById('userList');
+    let html = '';
+    users.forEach(u => {
+        const isAdmin = u.role === 'admin';
+        html += `<div class="user-list-item"><div class="user-info"><div class="name">${u.name}</div><div class="email">${u.email}</div></div><span class="badge-role ${isAdmin ? 'admin' : 'user'}">${isAdmin ? 'Admin' : 'User'}</span></div>`;
+    });
+    container.innerHTML = html || '<div class="text-muted text-center py-2">No users registered</div>';
+    
+    const stations = DB.getStations();
+    const tableBody = document.getElementById('adminStationTable');
+    let tableHtml = '';
+    stations.forEach(s => {
+        tableHtml += `<tr>
+            <td><strong>${s.name}</strong></td>
+            <td>${s.unleaded !== null && s.unleaded !== undefined ? '₱' + s.unleaded.toFixed(2) : 'N/A'}</td>
+            <td>${s.premium !== null && s.premium !== undefined ? '₱' + s.premium.toFixed(2) : 'N/A'}</td>
+            <td>${s.diesel !== null && s.diesel !== undefined ? '₱' + s.diesel.toFixed(2) : 'N/A'}</td>
+            <td><button class="btn btn-sm btn-outline-primary" onclick="openPriceModal(${s.id}, '${s.name}')"><i class="fas fa-edit"></i></button></td>
+        </tr>`;
+    });
+    tableBody.innerHTML = tableHtml || '<tr><td colspan="5" class="text-center text-muted">No stations available</td></tr>';
+}
+
+// ============================================================
+// PRICE MODAL
+// ============================================================
+const priceModal = new bootstrap.Modal(document.getElementById('priceModal'));
+
+function openPriceModal(stationId, stationName) {
+    document.getElementById('editStationId').value = stationId;
+    document.getElementById('priceModalTitle').textContent = `Edit Price - ${stationName}`;
+    document.getElementById('editPrice').value = '';
+    priceModal.show();
+}
+
+function savePrice() {
+    const stationId = parseInt(document.getElementById('editStationId').value);
+    const fuelType = document.getElementById('editFuelType').value;
+    const price = parseFloat(document.getElementById('editPrice').value);
+    if (isNaN(price) || price <= 0) { showToast('Please enter a valid price', 'error'); return; }
+    const stations = DB.getStations();
+    const index = stations.findIndex(s => s.id === stationId);
+    if (index === -1) { showToast('Station not found', 'error'); return; }
+    stations[index][fuelType] = price;
+    DB.set('stations', stations);
+    priceModal.hide();
+    showToast(`Price updated successfully!`, 'success');
+    updateAdminPanel();
+    updatePriceComparison();
+    if (mapInstance && !isRouteActive) findNearbyStations(userLat, userLng, currentRange);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    checkAuth();
+    drawPriceChart();
+    drawConsumptionChart();
+    if (document.getElementById('page-map').classList.contains('active')) {
+        setTimeout(initMap, 500);
+    }
+});
+
+window.addEventListener('resize', function() {
+    drawPriceChart();
+    drawConsumptionChart();
+});
+
+// Expose globals
+window.showToast = showToast;
+window.navigateTo = navigateTo;
+window.toggleESP32 = toggleESP32;
+window.startRoute = startRoute;
+window.cancelRoute = cancelRoute;
+window.openPriceModal = openPriceModal;
+window.savePrice = savePrice;
+window.initMap = initMap;
+window.findNearbyStations = findNearbyStations;
+window.logout = logout;
+</script>
+</body>
+</html>
