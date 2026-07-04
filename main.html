@@ -230,7 +230,7 @@
             transition: height 0.4s ease, background 0.3s;
         }
         #mapContainer.fullscreen {
-            height: calc(90vh - 220px);
+            height: calc(93vh - 220px);
             min-height: 350px;
         }
         #map { width: 100%; height: 100%; }
@@ -323,7 +323,7 @@
             opacity: 0;
         }
 
-         #stationList {
+        #stationList {
             max-height: 450px;
             overflow-y: auto;
         }
@@ -1021,6 +1021,9 @@ let isStationListVisible = true;
 let allStationsData = [];
 let isRouteActive = false;
 let activeRouteDestination = null;
+let isFetchingStations = false;
+let lastFetchTime = 0;
+let stationFetchTimeout = null;
 
 // ============================================================
 // THEME
@@ -1266,7 +1269,7 @@ function initMap() {
                 if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); 
             },
             err => { console.warn('Location error:', err.message); if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange); },
-            { enableHighAccuracy: true, distanceFilter: 10 }
+            { enableHighAccuracy: true, distanceFilter: 100 } // Increased distance filter to reduce updates
         );
     } else {
         if (!isRouteActive) findNearbyStations(userLat, userLng, currentRange);
@@ -1337,33 +1340,82 @@ function updateUserMarker(lat, lng) {
 function findNearbyStations(lat, lng, rangeKm) {
     if (isRouteActive) return;
     
+    // Prevent multiple simultaneous requests
+    if (isFetchingStations) {
+        console.log('Already fetching stations, skipping...');
+        return;
+    }
+    
+    // Throttle requests - only allow one request every 5 seconds
+    const now = Date.now();
+    if (now - lastFetchTime < 5000) {
+        console.log('Throttling station requests...');
+        return;
+    }
+    
+    isFetchingStations = true;
+    lastFetchTime = now;
+    
     currentRange = rangeKm || 5;
     const radius = currentRange * 1000;
     document.getElementById('stationCount').textContent = '...';
     document.getElementById('stationList').innerHTML = '<div class="text-center text-muted py-3">Searching...</div>';
     
+    // First, try to use locally stored stations
+    const dbStations = DB.getStations();
+    if (dbStations.length > 0) {
+        // Calculate distances for local stations
+        dbStations.forEach(station => {
+            station.distance = calculateDistance(lat, lng, station.lat, station.lng);
+            station.eta = estimateETA(station.distance);
+        });
+        dbStations.sort((a, b) => a.distance - b.distance);
+        allStationsData = dbStations;
+        
+        // Display local stations immediately
+        displayStations(dbStations, lat, lng);
+        
+        // Still try to fetch from Overpass API for updates (but don't block UI)
+        fetchOverpassStations(lat, lng, radius, dbStations);
+    } else {
+        // No local stations, try Overpass API
+        fetchOverpassStations(lat, lng, radius, []);
+    }
+}
+
+function fetchOverpassStations(lat, lng, radius, existingStations) {
     const query = `[out:json];(node["amenity"="fuel"](around:${radius},${lat},${lng});way["amenity"="fuel"](around:${radius},${lat},${lng}););out center;`;
     
-    fetch('https://overpass-api.de/api/interpreter', {
+    // Use fetch with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    fetch('https://cors-anywhere.herokuapp.com/https://overpass-api.de/api/interpreter', {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        signal: controller.signal
     })
-    .then(res => res.json())
+    .then(res => {
+        clearTimeout(timeoutId);
+        if (!res.ok) throw new Error('HTTP error ' + res.status);
+        return res.json();
+    })
     .then(data => {
-        markersLayer.clearLayers();
-        if (userMarker) userMarker.addTo(mapInstance);
-        const dbStations = DB.getStations();
+        const allStations = [...existingStations];
         const osmStations = (data.elements || []).filter(el => el.tags && el.tags.name);
-        const allStations = [...dbStations];
         
         osmStations.forEach(osm => {
-            const lat = osm.lat || (osm.center && osm.center.lat);
-            const lng = osm.lon || (osm.center && osm.center.lon);
-            if (!lat || !lng) return;
+            const osmLat = osm.lat || (osm.center && osm.center.lat);
+            const osmLng = osm.lon || (osm.center && osm.center.lon);
+            if (!osmLat || !osmLng) return;
             
             // Check if station already exists in db
-            const existing = allStations.find(s => Math.abs(s.lat - lat) < 0.001 && Math.abs(s.lng - lng) < 0.001);
+            const existing = allStations.find(s => 
+                Math.abs(s.lat - osmLat) < 0.001 && 
+                Math.abs(s.lng - osmLng) < 0.001
+            );
+            
             if (!existing) {
                 // Generate random prices for new stations
                 const prices = generateRandomPrices();
@@ -1371,8 +1423,8 @@ function findNearbyStations(lat, lng, rangeKm) {
                     id: Date.now() + Math.random() * 1000, 
                     name: osm.tags.name || 'Gas Station', 
                     brand: osm.tags.brand || '', 
-                    lat: lat, 
-                    lng: lng, 
+                    lat: osmLat, 
+                    lng: osmLng, 
                     unleaded: prices.unleaded,
                     premium: prices.premium,
                     diesel: prices.diesel,
@@ -1380,6 +1432,11 @@ function findNearbyStations(lat, lng, rangeKm) {
                 });
             }
         });
+        
+        // Save new stations to DB
+        if (allStations.length > existingStations.length) {
+            DB.set('stations', allStations);
+        }
         
         // Calculate distances for all stations
         allStations.forEach(station => {
@@ -1391,129 +1448,41 @@ function findNearbyStations(lat, lng, rangeKm) {
         allStations.sort((a, b) => a.distance - b.distance);
         allStationsData = allStations;
         
-        document.getElementById('stationCount').textContent = allStations.length + ' found';
-        document.getElementById('stationListCount').textContent = allStations.length;
-        
-        // Clear previous markers
-        markersLayer.clearLayers();
-        if (userMarker) userMarker.addTo(mapInstance);
-        
-        // Add markers for ALL stations
-        allStations.forEach(station => {
-            const lat = station.lat; const lng = station.lng;
-            if (!lat || !lng) return;
-            const hasPrices = station.unleaded !== null && station.unleaded !== undefined;
-            const isRecommended = hasPrices && station.unleaded < 58;
-            
-            const icon = L.divIcon({ 
-                html: `<div style="background:white;border-radius:50%;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);border:2px solid ${isRecommended ? '#4ade80' : '#1a5cff'};">
-                    <i class="fas fa-gas-pump" style="color:${isRecommended ? '#4ade80' : '#1a5cff'};font-size:12px;"></i>
-                </div>`, 
-                className: '', 
-                iconSize: [28, 28], 
-                iconAnchor: [14, 28] 
-            });
-            const marker = L.marker([lat, lng], { icon }).addTo(markersLayer);
-            marker.bindPopup(`
-                <strong>${station.name}</strong><br>
-                ${station.brand || ''}<br>
-                ${hasPrices ? `Unleaded: ₱${station.unleaded.toFixed(2)} | Premium: ₱${station.premium.toFixed(2)} | Diesel: ₱${station.diesel.toFixed(2)}` : 'No prices set'}<br>
-                📍 ${station.distance.toFixed(1)} km away<br>
-                ${station.address || ''}
-                <button class="btn btn-sm btn-primary mt-2" onclick="startRoute(${lat}, ${lng}, '${station.name}')" style="width:100%;border-radius:40px;">
-                    <i class="fas fa-car"></i> Drive Now
-                </button>
-            `);
-        });
-        
-        // Build station list - ALL stations
-        let html = '';
-        allStations.forEach((station) => {
-            const lat = station.lat; const lng = station.lng;
-            if (!lat || !lng) return;
-            const unleaded = station.unleaded !== null && station.unleaded !== undefined ? station.unleaded : null;
-            const premium = station.premium !== null && station.premium !== undefined ? station.premium : null;
-            const diesel = station.diesel !== null && station.diesel !== undefined ? station.diesel : null;
-            const hasAllPrices = unleaded !== null && premium !== null && diesel !== null;
-            const hasPartialPrices = (unleaded !== null || premium !== null || diesel !== null);
-            const distance = station.distance.toFixed(1);
-            const eta = station.eta;
-            const isRecommended = hasPartialPrices && unleaded !== null && unleaded < 58;
-            
-            html += `<div class="station-item ${isRouteActive && activeRouteDestination && activeRouteDestination.id !== station.id ? 'hidden-station' : ''} ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route-item' : ''}" id="station-${station.id}" data-station-id="${station.id}">
-                <div class="icon"><i class="fas fa-gas-pump"></i></div>
-                <div class="info">
-                    <div class="name">${station.name}</div>
-                    <div class="address">${station.address || 'Cebu City'}</div>
-                    <div class="eta">
-                        <i class="fas fa-clock"></i> ${eta} min ETA · 
-                        <i class="fas fa-route"></i> ${distance} km
-                        ${isRecommended ? ' · <span style="color:#4ade80;">Best Price!</span>' : ''}
-                    </div>
-                </div>
-                <div class="prices">
-                    ${hasAllPrices ? 
-                        `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${unleaded.toFixed(2)}</span></span>
-                         <span class="price-tag"><span class="type">Premium</span><span class="val">₱${premium.toFixed(2)}</span></span>
-                         <span class="price-tag"><span class="type">Diesel</span><span class="val">₱${diesel.toFixed(2)}</span></span>` : 
-                    hasPartialPrices ?
-                        `${unleaded !== null ? `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${unleaded.toFixed(2)}</span></span>` : ''}
-                         ${premium !== null ? `<span class="price-tag"><span class="type">Premium</span><span class="val">₱${premium.toFixed(2)}</span></span>` : ''}
-                         ${diesel !== null ? `<span class="price-tag"><span class="type">Diesel</span><span class="val">₱${diesel.toFixed(2)}</span></span>` : ''}
-                         ${(unleaded === null || premium === null || diesel === null) ? `<span class="price-tag"><span class="partial">Partial</span></span>` : ''}` :
-                        `<span class="text-muted" style="font-size:11px;">No prices</span>`
-                    }
-                </div>
-                ${isRecommended ? '<span class="badge-recommend"><i class="fas fa-star"></i> Best</span>' : ''}
-                <span class="badge-distance"><i class="fas fa-route"></i> ${distance}km</span>
-                <button class="drive-btn ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route' : ''}" onclick="startRoute(${lat}, ${lng}, '${station.name}')" id="drive-btn-${station.id}">
-                    <i class="fas fa-car"></i> ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'Driving' : 'Drive'}
-                </button>
-            </div>`;
-        });
-        
-        document.getElementById('stationList').innerHTML = html || '<div class="text-center text-muted py-3">No stations found in this area</div>';
-        
-        if (markersLayer.getLayers().length > 0) {
-            const bounds = L.latLngBounds(markersLayer.getLayers().map(m => m.getLatLng()));
-            bounds.extend([lat, lng]);
-            mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-        }
+        displayStations(allStations, lat, lng);
+        isFetchingStations = false;
     })
     .catch((err) => {
+        clearTimeout(timeoutId);
         console.error('Error fetching stations:', err);
-        showFallbackStations(lat, lng);
+        isFetchingStations = false;
+        
+        // If we have existing stations, we already displayed them
+        if (existingStations.length > 0) {
+            showToast('Using cached stations data', 'info');
+        } else {
+            // Show fallback stations
+            showFallbackStations(lat, lng);
+        }
     });
 }
 
-function showFallbackStations(lat, lng) {
-    if (isRouteActive) return;
-    
-    const stations = DB.getStations();
-    if (stations.length === 0) {
-        document.getElementById('stationList').innerHTML = '<div class="text-center text-muted py-3">No stations found. Try adding some in Admin panel or check your internet connection.</div>';
-        document.getElementById('stationCount').textContent = '0 found';
-        document.getElementById('stationListCount').textContent = '0';
-        return;
-    }
-    
-    // Calculate distances
-    stations.forEach(station => {
-        station.distance = calculateDistance(lat, lng, station.lat, station.lng);
-        station.eta = estimateETA(station.distance);
-    });
-    stations.sort((a, b) => a.distance - b.distance);
-    allStationsData = stations;
-    
+function displayStations(stations, lat, lng) {
+    // Clear previous markers
     markersLayer.clearLayers();
     if (userMarker) userMarker.addTo(mapInstance);
+    
     document.getElementById('stationCount').textContent = stations.length + ' found';
     document.getElementById('stationListCount').textContent = stations.length;
     
     // Add markers for ALL stations
     stations.forEach(station => {
+        const stationLat = station.lat; 
+        const stationLng = station.lng;
+        if (!stationLat || !stationLng) return;
+        
         const hasPrices = station.unleaded !== null && station.unleaded !== undefined;
         const isRecommended = hasPrices && station.unleaded < 58;
+        
         const icon = L.divIcon({ 
             html: `<div style="background:white;border-radius:50%;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.2);border:2px solid ${isRecommended ? '#4ade80' : '#1a5cff'};">
                 <i class="fas fa-gas-pump" style="color:${isRecommended ? '#4ade80' : '#1a5cff'};font-size:12px;"></i>
@@ -1522,26 +1491,34 @@ function showFallbackStations(lat, lng) {
             iconSize: [28, 28], 
             iconAnchor: [14, 28] 
         });
-        const marker = L.marker([station.lat, station.lng], { icon }).addTo(markersLayer);
+        const marker = L.marker([stationLat, stationLng], { icon }).addTo(markersLayer);
         marker.bindPopup(`
             <strong>${station.name}</strong><br>
             ${station.brand || ''}<br>
             ${hasPrices ? `Unleaded: ₱${station.unleaded.toFixed(2)} | Premium: ₱${station.premium.toFixed(2)} | Diesel: ₱${station.diesel.toFixed(2)}` : 'No prices set'}<br>
             📍 ${station.distance.toFixed(1)} km away<br>
             ${station.address || ''}
-            <button class="btn btn-sm btn-primary mt-2" onclick="startRoute(${station.lat}, ${station.lng}, '${station.name}')" style="width:100%;border-radius:40px;">
+            <button class="btn btn-sm btn-primary mt-2" onclick="startRoute(${stationLat}, ${stationLng}, '${station.name}')" style="width:100%;border-radius:40px;">
                 <i class="fas fa-car"></i> Drive Now
             </button>
         `);
     });
     
-    // Build station list - ALL stations
+    // Build station list
     let html = '';
     stations.forEach((station) => {
-        const hasPrices = station.unleaded !== null && station.unleaded !== undefined;
-        const isRecommended = hasPrices && station.unleaded < 58;
+        const stationLat = station.lat; 
+        const stationLng = station.lng;
+        if (!stationLat || !stationLng) return;
+        
+        const unleaded = station.unleaded !== null && station.unleaded !== undefined ? station.unleaded : null;
+        const premium = station.premium !== null && station.premium !== undefined ? station.premium : null;
+        const diesel = station.diesel !== null && station.diesel !== undefined ? station.diesel : null;
+        const hasAllPrices = unleaded !== null && premium !== null && diesel !== null;
+        const hasPartialPrices = (unleaded !== null || premium !== null || diesel !== null);
         const distance = station.distance.toFixed(1);
         const eta = station.eta;
+        const isRecommended = hasPartialPrices && unleaded !== null && unleaded < 58;
         
         html += `<div class="station-item ${isRouteActive && activeRouteDestination && activeRouteDestination.id !== station.id ? 'hidden-station' : ''} ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route-item' : ''}" id="station-${station.id}" data-station-id="${station.id}">
             <div class="icon"><i class="fas fa-gas-pump"></i></div>
@@ -1555,26 +1532,62 @@ function showFallbackStations(lat, lng) {
                 </div>
             </div>
             <div class="prices">
-                ${station.unleaded !== null && station.premium !== null && station.diesel !== null ? 
-                    `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${station.unleaded.toFixed(2)}</span></span>
-                     <span class="price-tag"><span class="type">Premium</span><span class="val">₱${station.premium.toFixed(2)}</span></span>
-                     <span class="price-tag"><span class="type">Diesel</span><span class="val">₱${station.diesel.toFixed(2)}</span></span>` : 
-                station.unleaded !== null || station.premium !== null || station.diesel !== null ?
-                    `${station.unleaded !== null ? `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${station.unleaded.toFixed(2)}</span></span>` : ''}
-                     ${station.premium !== null ? `<span class="price-tag"><span class="type">Premium</span><span class="val">₱${station.premium.toFixed(2)}</span></span>` : ''}
-                     ${station.diesel !== null ? `<span class="price-tag"><span class="type">Diesel</span><span class="val">₱${station.diesel.toFixed(2)}</span></span>` : ''}
-                     ${(station.unleaded === null || station.premium === null || station.diesel === null) ? `<span class="price-tag"><span class="partial">Partial</span></span>` : ''}` :
+                ${hasAllPrices ? 
+                    `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${unleaded.toFixed(2)}</span></span>
+                     <span class="price-tag"><span class="type">Premium</span><span class="val">₱${premium.toFixed(2)}</span></span>
+                     <span class="price-tag"><span class="type">Diesel</span><span class="val">₱${diesel.toFixed(2)}</span></span>` : 
+                hasPartialPrices ?
+                    `${unleaded !== null ? `<span class="price-tag"><span class="type">Unleaded</span><span class="val">₱${unleaded.toFixed(2)}</span></span>` : ''}
+                     ${premium !== null ? `<span class="price-tag"><span class="type">Premium</span><span class="val">₱${premium.toFixed(2)}</span></span>` : ''}
+                     ${diesel !== null ? `<span class="price-tag"><span class="type">Diesel</span><span class="val">₱${diesel.toFixed(2)}</span></span>` : ''}
+                     ${(unleaded === null || premium === null || diesel === null) ? `<span class="price-tag"><span class="partial">Partial</span></span>` : ''}` :
                     `<span class="text-muted" style="font-size:11px;">No prices</span>`
-            }
+                }
             </div>
             ${isRecommended ? '<span class="badge-recommend"><i class="fas fa-star"></i> Best</span>' : ''}
             <span class="badge-distance"><i class="fas fa-route"></i> ${distance}km</span>
-            <button class="drive-btn ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route' : ''}" onclick="startRoute(${station.lat}, ${station.lng}, '${station.name}')" id="drive-btn-${station.id}">
+            <button class="drive-btn ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'active-route' : ''}" onclick="startRoute(${stationLat}, ${stationLng}, '${station.name}')" id="drive-btn-${station.id}">
                 <i class="fas fa-car"></i> ${isRouteActive && activeRouteDestination && activeRouteDestination.id === station.id ? 'Driving' : 'Drive'}
             </button>
         </div>`;
     });
-    document.getElementById('stationList').innerHTML = html;
+    
+    document.getElementById('stationList').innerHTML = html || '<div class="text-center text-muted py-3">No stations found in this area</div>';
+    
+    if (markersLayer.getLayers().length > 0) {
+        const bounds = L.latLngBounds(markersLayer.getLayers().map(m => m.getLatLng()));
+        bounds.extend([lat, lng]);
+        mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
+    }
+}
+
+function showFallbackStations(lat, lng) {
+    if (isRouteActive) return;
+    
+    const stations = DB.getStations();
+    if (stations.length === 0) {
+        // Create some dummy stations if none exist
+        const dummyStations = [
+            { id: 1, name: 'Petron Gas Station', brand: 'Petron', lat: lat + 0.01, lng: lng + 0.01, unleaded: 57.50, premium: 62.50, diesel: 55.00, address: 'Main Road' },
+            { id: 2, name: 'Shell Station', brand: 'Shell', lat: lat - 0.008, lng: lng + 0.015, unleaded: 58.00, premium: 63.00, diesel: 55.50, address: 'Coastal Highway' },
+            { id: 3, name: 'Caltex Gas Station', brand: 'Caltex', lat: lat + 0.015, lng: lng - 0.01, unleaded: 56.50, premium: 61.00, diesel: 54.00, address: 'Downtown' },
+            { id: 4, name: 'Total Fuel Station', brand: 'Total', lat: lat - 0.012, lng: lng - 0.008, unleaded: 57.00, premium: 61.50, diesel: 54.50, address: 'East Road' },
+            { id: 5, name: 'Phoenix Petroleum', brand: 'Phoenix', lat: lat + 0.005, lng: lng - 0.012, unleaded: 58.50, premium: 63.50, diesel: 56.00, address: 'South Avenue' }
+        ];
+        DB.set('stations', dummyStations);
+        stations.push(...dummyStations);
+        showToast('Using demo station data', 'info');
+    }
+    
+    // Calculate distances
+    stations.forEach(station => {
+        station.distance = calculateDistance(lat, lng, station.lat, station.lng);
+        station.eta = estimateETA(station.distance);
+    });
+    stations.sort((a, b) => a.distance - b.distance);
+    allStationsData = stations;
+    
+    displayStations(stations, lat, lng);
 }
 
 // ============================================================
@@ -1608,6 +1621,7 @@ function startRoute(destLat, destLng, destName) {
         const pos = userMarker.getLatLng();
         startLat = pos.lat;
         startLng = pos.lng;
+        drawRoute(startLat, startLng, destLat, destLng, destName, destStation);
     } else if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             pos => {
@@ -1623,14 +1637,12 @@ function startRoute(destLat, destLng, destName) {
             },
             { enableHighAccuracy: true, timeout: 5000 }
         );
-        return;
     } else {
         const center = mapInstance.getCenter();
         startLat = center.lat;
         startLng = center.lng;
+        drawRoute(startLat, startLng, destLat, destLng, destName, destStation);
     }
-    
-    drawRoute(startLat, startLng, destLat, destLng, destName, destStation);
 }
 
 function drawRoute(startLat, startLng, endLat, endLng, destName, destStation) {
